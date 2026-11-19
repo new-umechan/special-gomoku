@@ -16,6 +16,7 @@
       <button type="button" id="sound-btn" class="btn-icon" aria-label="効果音" title="効果音のオン・オフ">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path class="sound-on" d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/><path class="sound-off" d="M16 9.5l5 5M21 9.5l-5 5"/></svg>
       </button>
+      <button type="button" id="share-btn" class="btn-text" hidden>画像共有</button>
       <button type="button" id="log-btn" class="btn-text">ログ</button>
       <button type="button" id="decks-btn" class="btn-text">デッキ</button>
       <button type="button" id="rules-btn" class="btn-text">ルール</button>
@@ -34,8 +35,8 @@
             <svg class="mode-icon" viewBox="0 0 48 48" aria-hidden="true" fill="#fff"><circle cx="16" cy="15" r="6.5"/><path d="M4 39c0-7.5 5.4-13 12-13s12 5.5 12 13z"/><circle cx="32" cy="15" r="6.5" stroke="#e5533d" stroke-width="3"/><path d="M20 39c0-7.5 5.4-13 12-13s12 5.5 12 13z" stroke="#e5533d" stroke-width="3" stroke-linejoin="round"/></svg>
             <span class="mode-label">ふたりで</span>
           </button>
-          <button type="button" id="start-cpu" class="btn-primary btn-dark mode-btn" aria-label="CPUと対戦">
-            <svg class="mode-icon" viewBox="0 0 48 48" aria-hidden="true" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="13" y="13" width="22" height="22" rx="4"/><rect x="19" y="19" width="10" height="10" rx="1.5" fill="#fff"/><path d="M19 13V7M29 13V7M19 41v-6M29 41v-6M13 19H7M13 29H7M41 19h-6M41 29h-6"/></svg>
+          <button type="button" id="start-cpu" class="btn-primary btn-cpu mode-btn" aria-label="CPUと対戦">
+            <svg class="mode-icon" viewBox="0 0 48 48" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="13" y="13" width="22" height="22" rx="4"/><rect x="19" y="19" width="10" height="10" rx="1.5" fill="currentColor"/><path d="M19 13V7M29 13V7M19 41v-6M29 41v-6M13 19H7M13 29H7M41 19h-6M41 29h-6"/></svg>
             <span class="mode-label">CPU</span>
           </button>
           <button type="button" id="start-online" class="btn-primary btn-online mode-btn" aria-label="オンライン対戦">
@@ -113,14 +114,30 @@
   </main>
 
   <!-- ダイアログは、外側（暗いところ）を押すと閉じる -->
-  <dialog id="result-dialog" class="dialog">
+  <dialog id="result-dialog" class="dialog" aria-labelledby="result-text" aria-describedby="result-sub">
     <div class="dialog-body">
       <p id="result-text" class="result-text"></p>
       <p id="result-sub" class="result-sub"></p>
-      <div class="dialog-actions">
-        <button type="button" id="look-btn" class="btn-text">盤面を見る</button>
-        <button type="button" id="deck-again" class="btn-text">デッキを変える</button>
+      <div class="result-actions">
         <button type="button" id="again-btn" class="btn-primary">もう一局</button>
+        <div class="result-secondary-actions">
+          <button type="button" id="share-result" class="btn-text">画像共有</button>
+          <button type="button" id="look-btn" class="btn-text">盤面を見る</button>
+          <button type="button" id="deck-again" class="btn-text">デッキを変える</button>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="share-dialog" class="dialog" aria-labelledby="share-heading">
+    <div class="dialog-body">
+      <h2 id="share-heading">盤面を画像で共有</h2>
+      <img class="share-image" id="share-image" alt="対局の盤面" hidden>
+      <p id="share-status" class="share-status" role="status"></p>
+      <div class="dialog-actions">
+        <button type="button" id="share-native" class="btn-primary btn-small" hidden>共有先を選ぶ</button>
+        <a id="share-download" class="btn-primary btn-small share-download" download="gomoku.png" hidden>PNGを保存</a>
+        <form method="dialog"><button class="btn-text">閉じる</button></form>
       </div>
     </div>
   </dialog>
@@ -149,6 +166,7 @@
 
   <script src="net.js"></script>
   <script src="sound.js"></script>
+  <script src="share.js"></script>
   <script src="script.js"></script>
   <script src="fx.js"></script>
   <script src="ai.js"></script>

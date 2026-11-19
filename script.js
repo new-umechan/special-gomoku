@@ -45,6 +45,8 @@ const ICONS = {
   go: '<circle cx="12" cy="12" r="3.2" fill="currentColor"/><circle cx="12" cy="4.5" r="2"/><circle cx="12" cy="19.5" r="2"/><circle cx="4.5" cy="12" r="2"/><circle cx="19.5" cy="12" r="2"/>',
   joker: '<path d="M12 3l2.7 5.6 6.1.8-4.5 4.2 1.1 6.1L12 16.8l-5.4 2.9 1.1-6.1-4.5-4.2 6.1-.8z" fill="currentColor" stroke="none"/>',
   chain: '<path d="M4.5 6l6 6-6 6M12.5 6l6 6-6 6"/>',
+  warp: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5" fill="currentColor"/><path d="M10 14l4-4M14 13v-3h-3"/>',
+  sniper: '<circle cx="12" cy="12" r="7"/><path d="M12 2.5v5M12 16.5v5M2.5 12h5M16.5 12h5"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/>',
   clone: '<circle cx="8" cy="8" r="4"/><circle cx="16" cy="16" r="4" fill="currentColor"/>',
   cloneH: '<circle cx="6.5" cy="12" r="3.5"/><circle cx="17.5" cy="12" r="3.5" fill="currentColor"/><path d="M12 4v16" stroke-dasharray="2 2.5"/>',
   cloneV: '<circle cx="12" cy="6.5" r="3.5"/><circle cx="12" cy="17.5" r="3.5" fill="currentColor"/><path d="M4 12h16" stroke-dasharray="2 2.5"/>',
@@ -91,6 +93,8 @@ const ABILITIES = {
   antigravity: { name: '反重力', desc: 'いつでも上へ昇る。上に続く石も一緒に押して昇らせる', area: 'up' },
   spin: { name: '回転', desc: 'まわりの8マスを、時計回りに1つずらす', onPlace: (b, x, y) => spinRing(b, x, y, 1), area: 'ring' },
   spinBack: { name: '逆回転', desc: 'まわりの8マスを、反時計回りに1つずらす', onPlace: (b, x, y) => spinRing(b, x, y, -1), area: 'ring' },
+  warp: { name: 'ワープ', desc: 'まわり3×3の石を、盤の真ん中をはさんだ反対側へ飛ばす。飛んだ先の石は消える', onPlace: warpAbility, area: 'warp' },
+  sniper: { name: 'スナイパー', desc: '置いたあと、盤のどこかの石を1つ選んで消す', onPlace: sniperAbility, aim: true },
   clone: { name: '分身', desc: '盤の真ん中をはさんだ反対側にも、自分の石が1つ増える', onPlace: (b, x, y, c, st) => cloneAt(b, SIZE - 1 - x, SIZE - 1 - y, c, st), area: 'mirror' },
   cloneH: { name: '左右分身', desc: '左右に折り返した位置にも、自分の石が1つ増える', onPlace: (b, x, y, c, st) => cloneAt(b, SIZE - 1 - x, y, c, st), area: 'mirrorH' },
   cloneV: { name: '上下分身', desc: '上下に折り返した位置にも、自分の石が1つ増える', onPlace: (b, x, y, c, st) => cloneAt(b, x, SIZE - 1 - y, c, st), area: 'mirrorV' },
@@ -167,6 +171,41 @@ function nukeAbility(board, x, y) {
   }
   return fx;
 }
+
+// ワープ：置いた石を真ん中にした3×3の石を、盤の中心について点対称の位置へ飛ばす。
+// 飛んだ先にあった石は消える（盾は消えないので、盾の上には飛ばない）。重しは動かない
+function warpAbility(board, x, y) {
+  const fx = [];
+  const moving = [];
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    const sx = x + dx, sy = y + dy;
+    const p = inside(sx, sy) && board[sy][sx];
+    if (!p || isFixed(p)) continue;
+    moving.push({ sx, sy, tx: SIZE - 1 - sx, ty: SIZE - 1 - sy, p });
+  }
+  const srcs = new Set(moving.map((m) => `${m.sx},${m.sy}`));
+  // 飛んだ先が、動かない盾なら飛ばない
+  const go = moving.filter((m) => { const d = board[m.ty][m.tx]; return !(d && isShielded(d) && !srcs.has(`${m.tx},${m.ty}`)); });
+  for (const m of go) board[m.sy][m.sx] = null;
+  for (const m of go) {
+    const d = board[m.ty][m.tx];
+    if (d) fx.push({ kind: 'gone', x: m.tx, y: m.ty, color: d.color });
+    board[m.ty][m.tx] = m.p;
+    fx.push({ kind: 'moved', x: m.tx, y: m.ty, fromX: m.sx, fromY: m.sy });
+  }
+  return fx;
+}
+
+// スナイパー：選んだ石を1つ消す（盾は消えない）。選んでいなければ何もしない
+function sniperAbility(board, x, y, color, st) {
+  const fx = [];
+  const t = st && st.target;
+  if (t && inside(t[0], t[1]) && !(t[0] === x && t[1] === y)) removeStone(board, fx, t[0], t[1]);
+  for (const f of fx) f.by = 'sniper';
+  return fx;
+}
+// スナイパーで狙える石か
+const canSnipe = (board, x, y, fromX, fromY) => inside(x, y) && !!board[y][x] && !isShielded(board[y][x]) && !(x === fromX && y === fromY);
 
 // 時限爆弾：置いてから2手（相手の1手と自分の1手）たつと爆発する。まわり8マスの石と自分が消える
 const FUSE = 2;
@@ -491,8 +530,8 @@ const MAX_COPIES = 3; // 同じ超能力は3つまで
 const COST = {
   plain: 1,
   gravity: 2, antigravity: 2, mine: 2, jam: 2, go: 2, weight: 2, shield: 2, wall: 2, joker: 2, push: 2,
-  bomb: 3, timeBomb: 3, rowBomb: 3, colBomb: 3, spin: 3, spinBack: 3, clone: 3, cloneH: 3, cloneV: 3, seal: 3, suck: 3, flag: 3,
-  diagBomb: 4, takeover: 4, grow: 4, chain: 4,
+  timeBomb: 3, warp: 3, rowBomb: 3, colBomb: 3, spin: 3, spinBack: 3, clone: 3, cloneH: 3, cloneV: 3, seal: 3, suck: 3, flag: 3,
+  bomb: 4, diagBomb: 4, sniper: 4, takeover: 4, grow: 4, chain: 4,
   othello: 5, nuke: 6,
   spy: 3, // リーチがあると置けないので、安くした
 };
@@ -503,9 +542,9 @@ const deckCount = (deck) => Object.values(deck).reduce((s, n) => s + n, 0);
 // 名前の順に並べる（オンラインで両方の画面が同じ袋を作れるように）
 const deckList = (deck) => Object.keys(deck).sort().flatMap((id) => Array(deck[id]).fill(id));
 const STARTERS = [
-  { id: 'balance', name: 'バランス', note: 'いろいろ少しずつ', deck: { plain: 8, bomb: 1, spin: 1, grow: 1, seal: 1, clone: 1 } },
+  { id: 'balance', name: 'バランス', note: 'いろいろ少しずつ', deck: { plain: 7, bomb: 1, spin: 1, grow: 1, seal: 1, clone: 1 } },
   { id: 'mass', name: '物量', note: '数で押す', deck: { plain: 14, gravity: 2, mine: 2, shield: 1 } },
-  { id: 'sourspy', name: 'すっぱいスパイ', note: '相手の列にまぎれこむ', deck: { plain: 6, joker: 3, bomb: 1, spy: 3 } },
+  { id: 'sourspy', name: 'すっぱいスパイ', note: '相手の列にまぎれこむ', deck: { plain: 5, joker: 3, bomb: 1, spy: 3 } },
   { id: 'nuclear', name: '一発逆転', note: '核が2つ', deck: { plain: 12, nuke: 2 } },
 ];
 
@@ -640,8 +679,9 @@ function resolvePlacement(board, x, y, color, id, st) {
 // ===== 1手を打つ（DOM に依存しない部分） =====
 // 1手の中の順番：能力の効果 → 重力・反重力 → 囲碁と地雷 → （変わらなくなるまで重力と囲碁をくり返す）→ 勝ち判定
 // 戻り値：{ ok, ability, steps, winner, extraTurn }。steps は段階ごとの盤と演出（画面で順に見せる）
-function playMove(x, y) {
+function playMove(x, y, target = null) {
   const color = state.turn;
+  state.target = target; // スナイパーで狙う石
   const p = state.players[color];
   const card = p.hand[state.selected];
   if (state.phase !== 'play' || !card) return { ok: false };
@@ -737,6 +777,7 @@ function showScreen(name) {
   for (const s of ['title', 'select', 'deck', 'game', 'online']) $(`${s}-screen`).hidden = s !== name;
   document.body.dataset.screen = name;
   $('log-btn').hidden = name !== 'game';
+  $('share-btn').hidden = name !== 'game';
 }
 
 function iconHTML(ability) {
@@ -776,13 +817,24 @@ const CHOICE_KEY = 'gomoku-choice';
 const TIER = { 1: 't1', 2: 't2', 3: 't3', 4: 't4', 5: 't5', 6: 't6' }; // ポイントの色分け
 const CATALOG = ['plain', ...SPECIAL_IDS].sort((x, y) => costOf(x) - costOf(y));
 
+// 旧コストで組んだデッキは、先にただの石を減らして予算に収める
+function adjustBombCost(deck) {
+  const excess = deckPoints(deck) - DECK_POINTS;
+  if (excess <= 0 || !deck.bomb) return deck;
+  const adjusted = { ...deck };
+  const plain = Math.min(adjusted.plain || 0, excess);
+  if (plain) adjusted.plain -= plain;
+  if (excess > plain) adjusted.bomb -= Math.min(adjusted.bomb, Math.ceil((excess - plain) / costOf('bomb')));
+  return Object.fromEntries(Object.entries(adjusted).filter(([, count]) => count > 0));
+}
+
 // 自分のデッキ：[{ id, name, deck }]。ブラウザに保存する
 function loadMyDecks() {
   try {
     const list = JSON.parse(localStorage.getItem(DECKS_KEY));
-    if (Array.isArray(list)) return list.filter((d) => d && d.id && d.deck).map((d) => ({ ...d, deck: Object.fromEntries(Object.entries(d.deck).filter(([id]) => id === 'plain' || ABILITIES[id])) })).filter((d) => deckCount(d.deck));
+    if (Array.isArray(list)) return list.filter((d) => d && d.id && d.deck).map((d) => ({ ...d, deck: adjustBombCost(Object.fromEntries(Object.entries(d.deck).filter(([id]) => id === 'plain' || ABILITIES[id]))) })).filter((d) => deckCount(d.deck));
     const old = JSON.parse(localStorage.getItem('gomoku-deck')); // 前の版で1つだけ保存していたもの
-    if (old && typeof old === 'object' && deckCount(old)) return [{ id: 'd1', name: 'じぶんのデッキ', deck: old }];
+    if (old && typeof old === 'object' && deckCount(old)) return [{ id: 'd1', name: 'じぶんのデッキ', deck: adjustBombCost(old) }];
   } catch (e) { /* 読めなければ空 */ }
   return [];
 }
@@ -1145,6 +1197,8 @@ function startGame(seed = newSeed()) {
   state.winner = undefined;
   state.moveCount = 0;
   state.pending = null;
+  state.aim = null;
+  $('board').classList.remove('is-aiming');
   state.busy = false;
   state.lastActive = null;
   log('黒から');
@@ -1175,7 +1229,7 @@ async function maybeCpuMove() {
   await sleep(500);
   clearPreview();
   state.busy = false;
-  place(move.x, move.y);
+  place(move.x, move.y, false, move.target || null);
 }
 
 function buildBoard() {
@@ -1246,7 +1300,7 @@ function renderBoard(board = state.board, fxList = state.fx, final = true) {
       el.classList.toggle('is-last', final && !!state.lastMove && state.lastMove[0] === x && state.lastMove[1] === y);
       el.innerHTML = p ? pieceHTML(p, classes.join(' '), style) : '';
       const playable = final && state.phase === 'play' && canPlaceAt(x, y, state.turn, id);
-      el.disabled = !playable;
+      el.disabled = !state.aim && !playable;
       el.classList.toggle('is-target', playable && !!p);
     }
   }
@@ -1268,6 +1322,7 @@ function areaCells(id, x, y, b) {
   if (area === 'row') for (let k = -R; k <= R; k++) mark(x + k, y);
   if (area === 'col') for (let k = -R; k <= R; k++) mark(x, y + k);
   if (area === 'diag') for (let k = -R; k <= R; k++) { mark(x + k, y + k); mark(x + k, y - k); }
+  if (area === 'warp') for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { mark(x + dx, y + dy); mark(SIZE - 1 - x - dx, SIZE - 1 - y - dy); }
   if (area === 'sq5') for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) mark(x + dx, y + dy);
   if (area === 'square') for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) mark(x + dx, y + dy);
   if (area === 'down') for (let cy = y + 1; inside(x, cy) && !b[cy][x]; cy++) mark(x, cy);
@@ -1280,6 +1335,7 @@ function areaCells(id, x, y, b) {
 let stoneTipTimer = null;
 let stoneTipAt = null;
 function hoverStone(x, y) {
+  if (state.aim) return;
   clearTimeout(stoneTipTimer);
   if (!state.board[y] || !state.board[y][x]) return;
   stoneTipTimer = setTimeout(() => showStoneTip(x, y), 1000);
@@ -1335,6 +1391,7 @@ function showStoneTip(x, y) {
 
 // 置く前の見た目：置く石の影と、効果の届く範囲
 function showPreview(x, y, force = false) {
+  if (state.aim) return;
   clearPreview();
   const card = selectedCard();
   if (state.phase !== 'play' || (state.busy && !force) || !card) return;
@@ -1349,7 +1406,7 @@ function showPreview(x, y, force = false) {
 }
 
 function clearPreview() {
-  $('board').querySelectorAll('.is-ghost').forEach((g) => g.remove());
+  $('board').querySelectorAll('.is-ghost').forEach((g) => { if (!state.aim || !g.classList.contains('is-pending')) g.remove(); });
   $('board').querySelectorAll('.in-area').forEach((c) => c.classList.remove('in-area'));
 }
 
@@ -1409,6 +1466,7 @@ function selectCard(i) {
   const card = state.players[state.turn].hand[i];
   if (cardBlocked(card, state.turn)) { Sound.deny(); const el = $(`panel-${state.turn}`).querySelectorAll('.hand-piece')[i]; if (el) { el.classList.remove('is-bump'); void el.offsetWidth; el.classList.add('is-bump'); } return; }
   if (state.selected !== i) Sound.select();
+  endAim();
   state.selected = i;
   renderPanel(state.turn);
   if (!state.busy) renderBoard();
@@ -1451,15 +1509,46 @@ function renderLog() {
 }
 
 // タッチでは、1回目のタップで場所を選び、同じマスをもう一度タップして置く
+// ===== スナイパーで狙う =====
+// 置くマスを決めたら「狙う」状態になる。盤の石を押すと、そこを撃って置く。空きマスや同じマスを押すとやめる
+function startAim(x, y) {
+  state.aim = [x, y];
+  clearPreview();
+  renderBoard();
+  const b = $('board');
+  b.classList.add('is-aiming');
+  const ghost = b.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
+  if (ghost) ghost.insertAdjacentHTML('beforeend', stoneHTML(state.turn, 'sniper', 'is-ghost is-pending'));
+  for (let yy = 0; yy < SIZE; yy++) for (let xx = 0; xx < SIZE; xx++) {
+    if (canSnipe(state.board, xx, yy, x, y)) b.querySelector(`.cell[data-x="${xx}"][data-y="${yy}"]`).classList.add('is-target');
+  }
+  $('game-status').querySelector('.status-text').textContent = '撃つ石を選ぶ（空きマスでやめる）';
+}
+function endAim() {
+  if (!state.aim) return;
+  state.aim = null;
+  $('board').classList.remove('is-aiming');
+  renderBoard();
+  renderStatus();
+}
+
 function onCellTap(x, y, pointerType) {
   const card = selectedCard();
   const cell = state.board[y] && state.board[y][x];
+  // 狙っているとき：石を押したら撃つ。それ以外はやめる
+  if (state.aim) {
+    const [ax, ay] = state.aim;
+    if (canSnipe(state.board, x, y, ax, ay)) { place(ax, ay, false, [x, y]); return; }
+    endAim();
+    return;
+  }
   const canPlace = state.phase === 'play' && card && !notMine(state.turn) && !state.cpuThinking && canPlaceAt(x, y, state.turn, effectiveAbility(card, state.turn));
   // 置けない碁石の上を押したら、その碁石の説明を出す（もう一度押すと閉じる）
   if (cell && !canPlace) { toggleStoneTip(x, y); return; }
   hideStoneTip();
   if (!canPlace) return;
-  // 演出の途中なら予約する（先行入力）。同じマスをもう一度押すと取り消し
+  // 演出の途中なら予約する（先行入力）。同じマスをもう一度押すと取り消し。スナイパーは狙う手順があるので予約しない
+  if (state.busy && ABILITIES[effectiveAbility(card, state.turn)].aim) return;
   if (state.busy) {
     const same = state.queued && state.queued[0] === x && state.queued[1] === y;
     state.queued = same ? null : [x, y];
@@ -1476,15 +1565,22 @@ function onCellTap(x, y, pointerType) {
   }
   state.pending = null;
   clearPreview();
+  // スナイパー：撃てる石があれば、置くマスを決めてから狙う
+  if (ABILITIES[effectiveAbility(card, state.turn)].aim) {
+    let any = false;
+    for (let yy = 0; yy < SIZE && !any; yy++) for (let xx = 0; xx < SIZE; xx++) if (canSnipe(state.board, xx, yy, x, y)) { any = true; break; }
+    if (any) { startAim(x, y); return; }
+  }
   place(x, y);
 }
 
-async function place(x, y, remote = false) {
+async function place(x, y, remote = false, target = null) {
   hideStoneTip(); // 盤が変わるので、碁石の説明は閉じる
+  endAim();
   const color = state.turn;
   const sent = selectedCard();
-  if (state.mode === 'online' && !remote && sent) Net.send('move', { id: sent.id, x, y });
-  const res = playMove(x, y);
+  if (state.mode === 'online' && !remote && sent) Net.send('move', { id: sent.id, x, y, target });
+  const res = playMove(x, y, target);
   if (!res.ok) return;
   state.busy = true;
   renderPanel('w');
@@ -1501,7 +1597,7 @@ async function place(x, y, remote = false) {
     renderBoard(res.before, [{ kind: 'placed', x, y }], false);
     const st = cellEl(x, y).querySelector('.stone');
     if (st) st.classList.add('is-charging');
-    FX.anticipate(t, res.ability, x, y, { area });
+    FX.anticipate(t, res.ability, x, y, { area, target });
     Sound.charge(FX.elementOf(res.ability), FX.anticipationOf(res.ability), res.ability);
     await sleep(FX.anticipationOf(res.ability) * 1000);
     Sound.ability(res.ability);
@@ -1547,7 +1643,8 @@ function runRemoteQueue() {
   const { type, data } = q.shift();
   if (type === 'move' && state.phase === 'play' && isRemote(state.turn)) {
     const i = state.players[state.turn].hand.findIndex((c) => c.id === data.id);
-    if (i >= 0) { state.selected = i; place(data.x, data.y, true); return true; }
+    const t = Array.isArray(data.target) && data.target.length === 2 ? data.target.map(Number) : null;
+    if (i >= 0) { state.selected = i; place(data.x, data.y, true, t); return true; }
   }
   return runRemoteQueue();
 }
@@ -1686,7 +1783,9 @@ function expandThen(btn, next) {
   const r = btn.getBoundingClientRect();
   const cover = document.createElement('div');
   cover.className = 'expander';
-  cover.style.background = getComputedStyle(btn).backgroundColor;
+  const colors = getComputedStyle(btn);
+  cover.style.background = colors.backgroundColor;
+  cover.style.color = colors.color;
   cover.innerHTML = `<span>${(btn.querySelector('.mode-label') || btn).textContent.trim()}</span>`;
   document.body.appendChild(cover);
   Sound.whoosh();
@@ -1747,6 +1846,7 @@ function onKey(e) {
   if (document.querySelector('dialog[open]')) return;
   if (state.phase === 'play' && ['1', '2', '3'].includes(e.key)) selectCard(Number(e.key) - 1);
   if (e.key === 'Escape' && state.pending) { state.pending = null; clearPreview(); }
+  if (e.key === 'Escape') endAim();
 }
 
 function init() {
@@ -1782,6 +1882,7 @@ function init() {
   $('deck-again').addEventListener('click', () => startSelect(state.mode));
   $('rules-btn').addEventListener('click', () => $('rules-dialog').showModal());
   $('log-btn').addEventListener('click', () => $('log-dialog').showModal());
+  initBoardShare();
   const soundBtn = $('sound-btn');
   const renderSoundBtn = () => { soundBtn.classList.toggle('is-muted', Sound.muted); soundBtn.setAttribute('aria-pressed', String(!Sound.muted)); };
   soundBtn.addEventListener('click', () => { Sound.setMuted(!Sound.muted); renderSoundBtn(); });
@@ -1812,6 +1913,6 @@ if (typeof module !== 'undefined') {
   module.exports = {
     setSeed, SIZE, ABILITIES, ICONS, SPECIAL_IDS, LINE_DIRS,
     findWin, specialWin, lineOwner, countsFor, growth, newBoard, newPiece, playMove, resolvePlacement, snapshot, areaCells, settle, goTraps, mineCheck,
-    state, makePlayer, STARTERS, COST, DECK_POINTS, MAX_COPIES, costOf, deckPoints, deckCount, deckList, hasReach, cardBlocked, spyCompletes, pushColumn, makeCard, effectiveAbility, canPlaceAt, inside, other, shuffle,
+    state, makePlayer, STARTERS, COST, DECK_POINTS, MAX_COPIES, costOf, deckPoints, deckCount, deckList, hasReach, cardBlocked, spyCompletes, canSnipe, pushColumn, makeCard, effectiveAbility, canPlaceAt, inside, other, shuffle,
   };
 }

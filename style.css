@@ -1,4 +1,5 @@
 :root {
+  color-scheme: light;
   --bg: #f7f4ee;
   --text: #1f1d1a;
   --muted: #8b857b;
@@ -8,6 +9,7 @@
   --board: #efd6a3;
   --board-line: #8a6a3a;
   --black: #1f1d1a;
+  --black-stone-edge: #1f1d1a;
   --white: #ffffff;
   --neutral: #a8a296;
   --win: #f5c518;
@@ -16,13 +18,16 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #1b1a18;
-    --text: #efe9df;
-    --muted: #9a9286;
-    --line: #36332e;
-    --board: #c9a86c;
-    --board-line: #5a4220;
+  :root {
+    color-scheme: dark;
+    --bg: #181512;
+    --text: #f6eee4;
+    --muted: #bcb0a2;
+    --line: #463c34;
+    --board: #4d382b;
+    --board-line: #a28468;
+    --black-stone-edge: #f4e8d8;
+    --inactive-black-stone-opacity: 0.72;
   }
 }
 
@@ -150,7 +155,10 @@ body[data-screen="title"] .logo { visibility: hidden; }
 @keyframes icon-hop { 0% { transform: scale(1); } 35% { transform: translateY(-6px) scale(1.18, 0.9); } 70% { transform: translateY(0) scale(0.94, 1.08); } 100% { transform: scale(1); } }
 .mode-icon { width: 46%; height: auto; }
 .mode-label { line-height: 1; }
-.btn-dark { background: var(--black); }
+.btn-cpu { background: var(--black); color: var(--white); }
+@media (prefers-color-scheme: dark) {
+  .btn-cpu { background: var(--white); color: var(--black); }
+}
 .btn-online { background: #3d7be0; }
 /* 押したボタンが画面いっぱいに広がる演出 */
 .expander {
@@ -178,7 +186,6 @@ body[data-screen="title"] .logo { visibility: hidden; }
 .art-side-l { fill: color-mix(in srgb, var(--board) 88%, #6b4a1f); }
 .art-line { stroke: var(--board-line); stroke-width: 1.2; opacity: 0.55; }
 .art-shadow { fill: rgba(60, 40, 10, 0.22); }
-.art-stone-w { stroke: rgba(150, 140, 120, 0.5); stroke-width: 0.8; }
 .art-icon-b, .art-icon-w { fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
 .art-icon-b { stroke: #fff; color: #fff; }
 .art-icon-w { stroke: #1f1d1a; color: #1f1d1a; }
@@ -195,7 +202,7 @@ body[data-screen="title"] main { padding-bottom: 0; }
   border-radius: 50%;
   line-height: 1;
 }
-.stone-b { background: var(--black); color: #fff; }
+.stone-b { background: var(--black); color: #fff; border: 2px solid var(--black-stone-edge, var(--black)); }
 .stone-w { background: var(--white); color: var(--black); box-shadow: inset 0 0 0 1.5px var(--black); }
 .stone-n { background: var(--neutral); width: 70%; border-radius: 22%; }
 .icon {
@@ -215,7 +222,7 @@ body[data-screen="title"] main { padding-bottom: 0; }
   border-radius: 50%;
   flex: none;
 }
-.turn-b { background: var(--black); }
+.turn-b { background: var(--black); box-shadow: inset 0 0 0 1.5px var(--black-stone-edge, var(--black)); }
 .turn-w { background: var(--white); box-shadow: inset 0 0 0 1.5px var(--black); }
 
 /* ===== コマとり ===== */
@@ -434,9 +441,12 @@ body[data-screen="title"] main { padding-bottom: 0; }
   transform: translateY(-4px) scale(1.06);
   box-shadow: 0 0 0 3px var(--bg), 0 0 0 6px var(--accent), 0 6px 0 2px var(--accent-soft);
 }
+.player.is-active .hand-piece.is-selected > .stone-b,
+.sel-card.is-on .sel-stones .stone-b { border-color: var(--black); }
 .player.is-active .hand-piece.is-selected .hand-name { color: var(--accent); }
 /* 相手の手札は薄くする。吹き出しまで薄くならないよう、石と名前だけを薄くする */
 .player:not(.is-active) .hand-piece > .stone, .player:not(.is-active) .hand-piece .hand-name { opacity: 0.4; }
+.player:not(.is-active) .hand-piece > .stone-b { opacity: var(--inactive-black-stone-opacity, 0.4); }
 .hand-piece:disabled { cursor: default; }
 .hand-piece.is-sealed .hand-name { text-decoration: line-through; }
 
@@ -614,9 +624,14 @@ body[data-screen="title"] main { padding-bottom: 0; }
 .ability-list dt .stone { width: 22px; }
 .ability-list dd { margin: 2px 0 0 30px; color: var(--muted); }
 .log { max-height: 50svh; overflow-y: auto; padding-left: 20px; font-size: 13px; margin: 0; }
-.dialog-actions { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 20px; }
+.dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 20px; }
+#result-dialog { width: min(400px, calc(100% - 32px)); }
+#result-dialog .dialog-body { padding-inline: clamp(12px, 5vw, 24px); }
 .result-text { font-family: var(--font-display); font-size: 30px; text-align: center; margin: 8px 0; }
 .result-sub { text-align: center; color: var(--muted); margin: 0; }
+.result-actions { display: grid; justify-items: center; gap: 12px; margin-top: 20px; }
+.result-secondary-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 clamp(8px, 3vw, 16px); }
+.result-secondary-actions .btn-text { padding-inline: 0; font-size: 14px; white-space: nowrap; }
 
 /* ===== 演出の粒（fx.js）。盤より少し大きいキャンバスを重ね、粒がはみ出せるようにする ===== */
 .board-fx {
@@ -1097,7 +1112,6 @@ body[data-screen="title"] main { padding-bottom: 0; }
 .sel-stones { display: flex; align-items: center; gap: 4px; min-height: 24px; flex-wrap: wrap; }
 .sel-stones .stone { width: 24px; flex: none; }
 .sel-stones .stone .icon { width: 62%; }
-.sel-card.is-on .sel-stones .stone-b { box-shadow: inset 0 0 0 1.5px var(--bg); }
 .sel-stones .more { font-size: 12px; font-weight: 700; opacity: 0.7; }
 .sel-meta { font-size: 12px; opacity: 0.72; padding-right: 28px; }
 .sel-meta b { font-size: 15px; margin-right: 1px; }
@@ -1195,7 +1209,6 @@ body[data-screen="title"] main { padding-bottom: 0; }
 /* ===== デッキを選ぶ：選んだ札は強調色 ===== */
 .sel-card.is-on { background: var(--accent); color: #fff; box-shadow: 0 6px 0 -2px color-mix(in srgb, var(--accent) 45%, transparent); }
 .sel-card.is-on::after { background-color: #fff; background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%23e5533d" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 12.5l4 4 8-9"/></svg>'); }
-.sel-card.is-on .sel-stones .stone-b { box-shadow: inset 0 0 0 1.5px #fff; }
 .sel-card.is-on .sel-stones .stone-w { box-shadow: none; }
 .sel-card.is-on .sel-tag { background: rgba(255, 255, 255, 0.25); }
 .sel-card.is-on:hover { box-shadow: 0 6px 0 -2px color-mix(in srgb, var(--accent) 45%, transparent); }
@@ -1330,3 +1343,21 @@ body[data-screen="title"] main { padding-bottom: 0; }
 .fuse-gauge[data-n="2"] i { background: #e5533d; }
 .fuse-gauge[data-n="1"] i:first-child { background: #e5533d; animation: fuse-blink 0.45s ease-in-out infinite alternate; }
 @keyframes fuse-blink { to { background: #ffd23f; } }
+
+/* スナイパー：狙えている石に照準 */
+.board.is-aiming .cell { cursor: default; }
+.board.is-aiming .cell.is-target { cursor: crosshair; }
+.board.is-aiming .cell.is-target > .stone::after {
+  content: "";
+  position: absolute;
+  inset: -12%;
+  border-radius: 50%;
+  border: 2px dashed var(--accent);
+  animation: aim-spin 2.4s linear infinite;
+}
+.board.is-aiming .cell.is-target:hover > .stone::after { border-style: solid; inset: -18%; }
+@keyframes aim-spin { to { transform: rotate(360deg); } }
+
+.share-image { display: block; width: min(100%, 320px); margin: 0 auto 12px; border-radius: 6px; }
+.share-status { margin: 0 0 12px; }
+.share-download { color: #fff; text-decoration: none; }

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ja">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>新しい碁石のアニメーション</title>
+    <link rel="stylesheet" href="../style.css">
+    <style>
+        body { max-width: 980px; margin: auto; padding: 24px; }
+        header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+        h1 { font-size: 1.5rem; }
+        h2 { font-size: 1.1rem; }
+        .previews { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 235px), 1fr)); gap: 32px; }
+        .mini { margin: 20px 12px; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>新しい碁石のアニメーション</h1>
+        <button type="button" class="btn-text" id="toggle">一時停止</button>
+    </header>
+    <div class="previews">
+        <section>
+            <h2>ワープ</h2>
+            <div class="mini" data-ability="warp"></div>
+            <p>渦が開き、石が盤の反対側へ移る。</p>
+        </section>
+        <section>
+            <h2>スナイパー</h2>
+            <div class="mini" data-ability="sniper"></div>
+            <p>狙った石に射線が走り、石が砕ける。</p>
+        </section>
+        <section>
+            <h2>時限爆弾</h2>
+            <div class="mini" data-ability="timeBomb"></div>
+            <p>火花が散り、2手あとに周囲の石を巻き込んで爆発する。</p>
+        </section>
+    </div>
+    <script src="../script.js"></script>
+    <script src="../fx.js"></script>
+    <script>
+        const previews = document.querySelectorAll('[data-ability]');
+        const toggle = document.getElementById('toggle');
+        let playing = false;
+
+        function setPlaying(value) {
+            playing = value;
+            for (const preview of previews) {
+                if (playing) Demo.start(preview, preview.dataset.ability);
+                else Demo.stop(preview);
+            }
+            toggle.textContent = playing ? '一時停止' : '最初から再生';
+        }
+
+        toggle.addEventListener('click', () => setPlaying(!playing));
+        setPlaying(!matchMedia('(prefers-reduced-motion: reduce)').matches);
+    </script>
+</body>
+</html>

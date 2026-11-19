@@ -38,7 +38,7 @@
     invert: { name: '反転', tint: '#e8e6e1', c: ['#1f1d1a', '#8a847c', '#ffffff'], smoke: ['#2a2622', '#e8e6e1'] },
   };
   const ELEMENT_OF = {
-    nuke: 'fire', timeBomb: 'fire', bomb: 'fire', rowBomb: 'fire', colBomb: 'fire', diagBomb: 'fire',
+    nuke: 'fire', timeBomb: 'fire', bomb: 'fire', warp: 'vortex', sniper: 'thunder', rowBomb: 'fire', colBomb: 'fire', diagBomb: 'fire',
     push: 'wind',
     suck: 'vortex', spin: 'vortex', spinBack: 'vortex',
     gravity: 'gravity', antigravity: 'gravity',
@@ -434,6 +434,10 @@
   // 碁石ごとの衝撃の組み合わせ。shake は盤の揺れの強さ（効果が大きいほど強く）
   const RECIPE = {
     bomb: { el: 'fire', impact: (e, x, y, s) => IMPACT.fire(e, x, y, s, { pw: 1 }), shake: 1.1 },
+    // ワープ：渦が巻いて、反対側へ
+    warp: { el: 'vortex', impact: (e, x, y, s) => IMPACT.vortex(e, x, y, s, { contract: true }), shake: 0.3 },
+    // スナイパー：照準の輪が縮んで、撃つ（当たった石は、あとの段階で砕ける）
+    sniper: { el: 'thunder', impact: (e, x, y, s) => { P.ring(e, x, y, s, { col: INK, wid: 0.06, far: 0.4, near: 1.3, inward: true, split: 4, dur: 0.3 }); }, shake: 0.2 },
     // 時限爆弾：置いたときは小さく火花が散るだけ（爆発は2手あと）
     timeBomb: { el: 'fire', impact: (e, x, y, s) => { P.ring(e, x, y, s, { col: ELEMENTS.fire.c[1], wid: 0.1, far: 1.1, dur: 0.35 }); P.dots(e, x, y, s, { n: 5, cols: ELEMENTS.fire.c }); }, shake: 0.15 },
     // 核：爆弾の倍の大きさ。白い閃光の輪が2重に広がり、遅れてもう一度ふくらむ
@@ -494,6 +498,21 @@
       const col = ELEMENTS[el].c[1] === WHITE ? ELEMENTS[el].c[0] : ELEMENTS[el].c[0];
       if (opts.area && opts.area.length) P.frame(e, areaRect(t, x, y, opts.area), col, dur);
       const [px, py] = t.map(x, y);
+      if (ability === 'sniper' && opts.target) {
+        const [tx, ty] = t.map(...opts.target);
+        e.add(dur, (c, k) => {
+          const r = t.cell * (0.8 - k * 0.3);
+          c.strokeStyle = '#b82e24';
+          c.lineWidth = Math.max(1.5, t.cell * 0.045);
+          c.beginPath(); c.arc(tx, ty, r, 0, Math.PI * 2); c.stroke();
+          c.beginPath();
+          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            c.moveTo(tx + r * dx * 0.72, ty + r * dy * 0.72);
+            c.lineTo(tx + r * dx * 1.2, ty + r * dy * 1.2);
+          }
+          c.stroke();
+        });
+      }
       e.add(dur, (c, k) => {
         const q = (k * dur * 3.2) % 1;
         c.strokeStyle = col; c.globalAlpha = 1 - q; c.lineWidth = 2;
@@ -538,10 +557,19 @@
           IMPACT.fire(e, px, py, s, { pw: 1 });
           if (t.shakeEl) FX.shake(t.shakeEl, 1.1);
         } else if (f.kind === 'gone') {
+          if (f.by === 'sniper' && o.origin) {
+            e.add(0.2, (c, k) => {
+              c.globalAlpha = (1 - k) * 0.85;
+              c.strokeStyle = WHITE;
+              c.lineWidth = s * 0.065;
+              c.beginPath(); c.moveTo(ox, oy); c.lineTo(px, py); c.stroke();
+            });
+          }
           const ux = px - ox, uy = py - oy, d = Math.hypot(ux, uy) || 1;
           P.shards(e, px, py, s, f.color || 'b', { ux: o.origin ? ux / d : 0, uy: o.origin ? uy / d : -1 });
           if (f.by === 'go') { P.ring(e, px, py, s, { col: ELEMENTS.earth.c[1], wid: 0.14, far: 0.4, near: 1.2, inward: true, split: 4, dur: 0.4 }); P.rocks(e, px, py, s, ELEMENTS.earth.c, { n: 4 }); }
           if (f.by === 'mine') IMPACT.thunder(e, px, py, s, { bolts: 3 });
+          if (f.by === 'sniper') { P.ring(e, px, py, s, { col: ELEMENTS.fire.c[0], wid: 0.1, far: 0.3, near: 1.2, inward: true, split: 4, dur: 0.25 }); }
         } else if (f.kind === 'neutralized') {
           // おじゃま：超能力が抜ける（紫の弧が閉じて、ぽんと消える）
           P.arcs(e, px, py, s, { n: 3, r0: 0.9, r1: 0.2, dir: -1, col: ELEMENTS.curse.c[1], width: 3, dur: 0.4, len: 0.9, turn: 1 });
@@ -553,6 +581,8 @@
           else if (o.ability && ELEMENT_OF[o.ability] === 'water') IMPACT.water(e, px, py, s * 0.8);
           else if (o.ability === 'wall') P.rocks(e, px, py, s, ELEMENTS.earth.c, { n: 4 });
           else P.ring(e, px, py, s, { col: INK, wid: 0.06, far: 0.8, near: 0.4, dur: 0.3, split: 0 });
+        } else if (f.kind === 'moved' && o.ability === 'warp') {
+          P.ring(e, px, py, s, { col: ELEMENTS.vortex.c[2], wid: 0.1, near: 0.32, far: 0.8, delay: 0.16, dur: 0.38 });
         } else if (f.kind === 'moved' && board) {
           const p = board[f.y][f.x];
           if (p && (p.ability === 'gravity' || p.ability === 'antigravity')) IMPACT.gravity(e, px, py, s, { dir: p.ability === 'gravity' ? 1 : -1 });
@@ -604,6 +634,9 @@
   const DEMOS = {
     push: { pre: [[1, 0, 'w'], [-1, -1, 'b'], [0, 1, 'w'], [-1, 1, 'w']], at: [0, 0] },
     suck: { pre: [[2, 0, 'w'], [-2, -2, 'b'], [0, 2, 'w'], [-2, 2, 'w']], at: [0, 0] },
+    timeBomb: { pre: [[1, 0, 'w'], [0, -1, 'b']], at: [0, 0], follow: [[2, -2, 'w'], [-2, 2, 'b']] },
+    warp: { pre: [[-2, -1, 'w'], [-1, -2, 'b'], [0, 0, 'w'], [2, 1, 'w']], at: [-1, -1] },
+    sniper: { pre: [[2, -1, 'w'], [1, 1, 'w'], [-1, 0, 'b']], at: [-1, 1], target: [2, -1] },
     bomb: { pre: [[1, 0, 'w'], [-1, 0, 'w'], [0, -1, 'b'], [1, 1, 'w'], [-2, 2, 'w']], at: [0, 0] },
     nuke: { pre: [[1, 0, 'w'], [-1, 1, 'w'], [0, -1, 'b'], [2, 2, 'w'], [-2, -2, 'w'], [2, -1, 'b'], [-2, 1, 'w'], [1, 2, 'b'], [-1, -2, 'w']], at: [0, 0] },
     rowBomb: { pre: [[-2, 0, 'w'], [-1, 0, 'w'], [1, 0, 'b'], [2, 0, 'w'], [0, -1, 'w'], [0, 1, 'b']], at: [0, 0] },
@@ -676,7 +709,7 @@
 
   async function loop(root, ability, token) {
     const demo = DEMOS[ability];
-    const fakeState = { moveCount: 0, players: { b: { hand: [] }, w: { hand: [{ ability: 'push' }] } } };
+    const fakeState = { moveCount: 0, target: demo.target?.map((n) => C + n), players: { b: { hand: [] }, w: { hand: [{ ability: 'push' }] } } };
     while (!token.stop) {
       const board = newBoard();
       for (const [dx, dy, c, ab, age] of demo.pre) board[C + dy][C + dx] = newPiece(c, ab || 'plain', fakeState, age ? { age } : {});
@@ -691,7 +724,7 @@
       // 予兆：置いただけの盤を見せ、石をためる
       if (showAb && RECIPE[showAb]) {
         drawMini(root, res.before, [{ kind: 'placed', x: ax, y: ay }], [], [ax, ay]);
-        FX.anticipate(t, showAb, ax, ay, { area });
+        FX.anticipate(t, showAb, ax, ay, { area, target: fakeState.target });
         await wait(FX.anticipationOf(showAb) * 1000, token);
       }
       for (let i = 0; i < res.steps.length; i++) {
@@ -702,11 +735,18 @@
         else FX.after(t, res.steps[i].fx, res.steps[i].board);
         await wait(i === res.steps.length - 1 ? 250 : 420, token);
       }
-      if (demo.then) {
-        await wait(200, token);
-        const tx = C + demo.then[0], ty = C + demo.then[1];
-        const r2 = resolvePlacement(board, tx, ty, 'b', 'plain', fakeState);
-        drawMini(root, r2.steps[0].board, r2.steps[0].fx);
+      const follow = demo.follow || (demo.then ? [[...demo.then, 'b']] : []);
+      for (const [dx, dy, color] of follow) {
+        await wait(demo.follow ? 650 : 200, token);
+        const tx = C + dx, ty = C + dy;
+        const next = resolvePlacement(board, tx, ty, color, 'plain', fakeState);
+        drawMini(root, next.steps[0].board, next.steps[0].fx);
+        for (const step of next.steps.slice(1)) {
+          await wait(250, token);
+          drawMini(root, step.board, step.fx);
+          FX.after(t, step.fx, step.board);
+        }
+        if (next.steps.length === 1 && demo.follow) drawMini(root, board, next.steps[0].fx);
       }
       const win = findWin(board, 'b') || findWin(board, 'w') || specialWin(board, 'b');
       if (win) { drawMini(root, board, [], win); IMPACT.light(engine(t.canvas), ...t.map(ax, ay), t.cell * 0.8); }
