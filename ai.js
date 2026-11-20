@@ -319,6 +319,7 @@
         restore(root);
         const candidates = [];
         for (const move of genMoves(23)) {
+          if (candidates.length && performance.now() >= deadline) break;
           restore(root);
           if (!apply(move)) continue;
           const score = evaluate(me);
@@ -372,5 +373,5 @@
 
   const AI = { chooseMove, chooseDeepMove, draftPick, evaluate, lineScore, save, restore, PICK_VALUE };
   if (typeof module !== 'undefined') module.exports = AI;
-  else window.AI = AI;
+  else globalThis.AI = AI;
 })();

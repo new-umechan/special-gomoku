@@ -7,7 +7,9 @@ const HAND_SIZE = 3;
 // 取る順番（0 = 黒, 1 = 白）。打つのと同じく黒から。3択から1つずつ、交互に取る
 // CPU と対戦するときは、人が黒（先手）、CPU が白
 const CPU_COLOR = 'w';
-const CPU_DELAY_MS = 450;
+const CPU_SEARCH_MS = 35;
+const CPU_WORKER_TIMEOUT_MS = 150;
+const CPU_PREVIEW_MS = 100;
 const BANNER_MS = 750;
 const STEP_MS = 420; // 効果 → 重力 → 囲碁、と段階ごとに見せる間
 const MAX_ROUNDS = 12; // 重力と罠のくり返しの上限
@@ -845,6 +847,8 @@ function newBoard() {
 // ===== 画面 =====
 const $ = (id) => document.getElementById(id);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const cpuWorkerUrl = typeof document !== 'undefined' && document.currentScript?.src
+  ? new URL('cpu-worker.js?v=1', document.currentScript.src) : null;
 
 function showScreen(name) {
   hideStoneTip();
@@ -1061,6 +1065,7 @@ function startSelect(mode = state.mode) {
   if (state.phase === 'online') Net.leave();
   for (const d of document.querySelectorAll('dialog[open]')) d.close();
   state.mode = mode;
+  if (mode === 'cpu') getCpuWorker();
   state.phase = 'select';
   state.remoteQueue = [];
   state.logs = [];
@@ -1447,6 +1452,8 @@ function flyTo(fromRect, toEl, html) {
 
 // --- 対局 ---
 function startGame(seed = newSeed()) {
+  cancelCpuSearch();
+  state.cpuThinking = false;
   Demo.stopAll();
   for (const d of document.querySelectorAll('dialog[open]')) d.close();
   setSeed(seed);
@@ -1478,25 +1485,86 @@ function startGame(seed = newSeed()) {
   maybeCpuMove();
 }
 
-// CPU の番なら、少し考えるふりをしてから打つ（選んだ碁石を持ち上げ、置く場所に影を出してから置く）
+let cpuWorker;
+let cpuSearch;
+
+function getCpuWorker() {
+  if (cpuWorker !== undefined) return cpuWorker;
+  if (!cpuWorkerUrl || typeof Worker === 'undefined') return null;
+  try {
+    const worker = new Worker(cpuWorkerUrl);
+    cpuWorker = worker;
+    worker.addEventListener('error', () => {
+      if (cpuWorker === worker) cpuWorker = null;
+      worker.terminate();
+    });
+  } catch {
+    cpuWorker = null;
+  }
+  return cpuWorker;
+}
+
+function cancelCpuSearch() {
+  cpuSearch?.cancel?.();
+  cpuSearch = null;
+  $('panel-w').classList.remove('is-thinking');
+}
+
+function prefetchCpuMove() {
+  if (state.phase !== 'play' || !isCpu(state.turn)) return null;
+  if (cpuSearch?.board === state.board && cpuSearch.moveCount === state.moveCount) return cpuSearch;
+  cpuSearch?.cancel?.();
+  const search = { board: state.board, moveCount: state.moveCount };
+  cpuSearch = search;
+  const worker = getCpuWorker();
+  search.result = new Promise((resolve) => {
+    if (!worker) { resolve(null); return; }
+    const finish = (move) => {
+      clearTimeout(timeout);
+      worker.onmessage = worker.onerror = null;
+      search.cancel = null;
+      resolve(move);
+    };
+    const stop = () => {
+      worker.terminate();
+      if (cpuWorker === worker) cpuWorker = undefined;
+      finish(null);
+    };
+    const timeout = setTimeout(stop, CPU_WORKER_TIMEOUT_MS);
+    search.cancel = stop;
+    worker.onmessage = ({ data }) => finish(data);
+    worker.onerror = () => finish(null);
+    try {
+      worker.postMessage(AI.save());
+    } catch {
+      stop();
+    }
+  });
+  return search;
+}
+
+// 前の手の演出中に探索を進め、選んだ場所を短く予告してから置く。
 async function maybeCpuMove() {
   if (state.phase !== 'play' || !isCpu(state.turn) || state.busy) return;
+  const search = prefetchCpuMove();
+  const current = () => cpuSearch === search && state.phase === 'play' && isCpu(state.turn);
   state.busy = true;
   state.cpuThinking = true;
   $(`panel-${state.turn}`).classList.add('is-thinking');
-  await sleep(CPU_DELAY_MS);
-  const move = AI.chooseDeepMove({ budgetMs: 35 });
+  const workerMove = await search.result;
+  if (!current()) return;
+  const move = workerMove || AI.chooseDeepMove({ budgetMs: 6 });
   $(`panel-${state.turn}`).classList.remove('is-thinking');
-  state.busy = false;
   state.cpuThinking = false;
-  if (!move) return;
+  if (!move) { state.busy = false; return; }
   state.selected = move.i;
   renderPanel(state.turn);
   renderStatus();
   renderBoard();
-  state.busy = true;
   showPreview(move.x, move.y, true);
-  await sleep(500);
+  await sleep(CPU_PREVIEW_MS);
+  if (!current()) return;
+  cpuSearch = null;
   clearPreview();
   state.busy = false;
   place(move.x, move.y, false, move.target || null);
@@ -1851,6 +1919,7 @@ async function place(x, y, remote = false, target = null) {
   if (res.ok) (state.history = state.history || []).push({ color, id: playedId, actual: res.ability, x, y, target });
   if (!res.ok) return;
   state.busy = true;
+  prefetchCpuMove();
   renderPanel('w');
   renderPanel('b');
   renderStatus();
@@ -2074,6 +2143,8 @@ function backToTitle(force = false) {
   if (state.phase === 'title') return;
   if (!force && state.phase === 'play' && !window.confirm('対局の途中です。タイトルに戻りますか？')) return;
   if (state.mode === 'online' || state.phase === 'online') Net.leave();
+  cancelCpuSearch();
+  state.cpuThinking = false;
   for (const d of document.querySelectorAll('dialog[open]')) d.close();
   Demo.stopAll();
   state.phase = 'title';
