@@ -41,7 +41,7 @@ function runGames(count, depth) {
     const decks = { b: randomDeck(), w: randomDeck() };
     const held = { b: Object.keys(decks.b).filter((id) => id !== 'plain'), w: Object.keys(decks.w).filter((id) => id !== 'plain') };
     Object.assign(state, {
-      phase: 'play', board: newBoard(), turn: 'b', selected: 0, sealed: null, jammed: null,
+      phase: 'play', board: newBoard(), turn: 'b', selected: 0, sealed: null, chainTurn: null, jammed: null,
       lastMove: null, fx: [], winLine: null, winner: undefined, moveCount: 0, logs: [],
       players: { b: makePlayer('b', decks.b), w: makePlayer('w', decks.w) },
     });
@@ -51,7 +51,7 @@ function runGames(count, depth) {
       const m = AI.chooseMove({ depth });
       if (!m) break;
       state.selected = m.i;
-      const res = playMove(m.x, m.y);
+      const res = playMove(m.x, m.y, m.target);
       if (!res.ok) break;
       if (stats[res.ability]) stats[res.ability].used++;
       moves++;

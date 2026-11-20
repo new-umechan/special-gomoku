@@ -700,20 +700,20 @@ const snapshot = (board) => board.map((row) => row.map((c) => c && { ...c }));
 // 対局（playMove）と、取り合いのお試し（fx.js のデモ）の両方で使う。どちらも同じ動きになる。
 // 順番：能力の効果 → 増殖 → 重力・反重力 → 囲碁と地雷 →（変わらなくなるまで重力と囲碁をくり返す）
 // st は対局の状態（封印・おじゃまが相手の手札を見るため）。お試しでは手札のない仮の状態を渡す
-function resolvePlacement(board, x, y, color, id, st) {
+function resolvePlacement(board, x, y, color, id, st, record = true) {
   const ab = ABILITIES[id];
   const piece = id === 'spy' ? newPiece(other(color), 'spy', st, { owner: color })
     : id === 'timeBomb' ? newPiece(color, id, st, { fuse: FUSE }) : newPiece(color, id, st);
   board[y][x] = piece;
-  const before = snapshot(board); // 置いた直後、効果が起きる前（予兆を見せるため）
+  const before = record ? snapshot(board) : null; // 置いた直後、効果が起きる前（予兆を見せるため）
   const fx0 = ab.onPlace ? ab.onPlace(board, x, y, color, st) : [];
-  const steps = [{ board: snapshot(board), fx: [{ kind: 'placed', x, y }, ...fx0] }];
+  const steps = record ? [{ board: snapshot(board), fx: [{ kind: 'placed', x, y }, ...fx0] }] : [];
   const allFx = fx0.slice();
   const grown = growth(board, color, st);
-  if (grown.length) { steps.push({ board: snapshot(board), fx: grown }); allFx.push(...grown); }
+  if (grown.length) { if (record) steps.push({ board: snapshot(board), fx: grown }); allFx.push(...grown); }
   // 時限爆弾の導火線が1つ縮む。0になったものは爆発する（いま置いた時限爆弾は数えない）
   const boomed = fuseTick(board, piece.uid);
-  if (boomed.length) { steps.push({ board: snapshot(board), fx: boomed }); allFx.push(...boomed); }
+  if (boomed.length) { if (record) steps.push({ board: snapshot(board), fx: boomed }); allFx.push(...boomed); }
   // 地雷は、置いた石と、分身・増殖で増えた石の両方に反応する
   const newUids = [piece.uid, ...allFx.filter((f) => f.kind === 'placed').map((f) => board[f.y][f.x] && board[f.y][f.x].uid).filter(Boolean)];
   for (let round = 0; round < MAX_ROUNDS; round++) {
@@ -721,7 +721,7 @@ function resolvePlacement(board, x, y, color, id, st) {
     if (round === 0) for (const uid of newUids) fx.push(...mineCheck(board, uid));
     fx.push(...goTraps(board));
     if (!fx.length) break;
-    steps.push({ board: snapshot(board), fx });
+    if (record) steps.push({ board: snapshot(board), fx });
     allFx.push(...fx);
   }
   return { piece, steps, allFx, before };
@@ -730,7 +730,7 @@ function resolvePlacement(board, x, y, color, id, st) {
 // ===== 1手を打つ（DOM に依存しない部分） =====
 // 1手の中の順番：能力の効果 → 重力・反重力 → 囲碁と地雷 → （変わらなくなるまで重力と囲碁をくり返す）→ 勝ち判定
 // 戻り値：{ ok, ability, steps, winner, extraTurn }。steps は段階ごとの盤と演出（画面で順に見せる）
-function playMove(x, y, target = null) {
+function playMove(x, y, target = null, trial = false) {
   const color = state.turn;
   state.target = target; // スナイパーで狙う石
   const p = state.players[color];
@@ -744,22 +744,25 @@ function playMove(x, y, target = null) {
   state.selected = null;
   state.moveCount++;
 
-  const rolled = id === 'mystery' ? pickMystery() : null; // はてな：くじで決まった超能力
+  // CPU の読みでは、未知の「はてな」の能力をただの石として扱い、本番の乱数を使わない。
+  const rolled = id === 'mystery' ? (trial ? 'plain' : pickMystery()) : null;
   const actual = rolled || id;
   const ab = ABILITIES[actual];
   if (wasSealed) state.sealed = null;
   state.jammed = null;
-  const { piece, steps, allFx, before } = resolvePlacement(state.board, x, y, color, actual, state);
+  const { piece, steps, allFx, before } = resolvePlacement(state.board, x, y, color, actual, state, !trial);
   state.lastMove = findUid(state.board, piece.uid);
-  state.fx = steps[steps.length - 1].fx;
+  if (!trial) {
+    state.fx = steps[steps.length - 1].fx;
 
-  let text = `${nameOf(color)}が${ABILITIES[id].name}を${colLabel(x)}${y + 1}に置いた${describeFx(allFx)}`;
-  if (wasSealed && card.ability !== 'plain') text = `${nameOf(color)}は封印されていて、${ABILITIES[card.ability].name}がただの石になった`;
-  log(text);
-  if (rolled) log(`はてなは「${ABILITIES[rolled].name}」になった`);
-  if (actual === 'swapHands') log('手札が入れ替わった');
-  if (id === 'seal') log(`${nameOf(other(color))}は次の番、超能力が使えない`);
-  if (id === 'jam') { const n = allFx.filter((f) => f.kind === 'neutralized').length; log(n ? `まわりの碁石${n}個の超能力が消えた` : 'まわりに超能力の碁石がなかった'); }
+    let text = `${nameOf(color)}が${ABILITIES[id].name}を${colLabel(x)}${y + 1}に置いた${describeFx(allFx)}`;
+    if (wasSealed && card.ability !== 'plain') text = `${nameOf(color)}は封印されていて、${ABILITIES[card.ability].name}がただの石になった`;
+    log(text);
+    if (rolled) log(`はてなは「${ABILITIES[rolled].name}」になった`);
+    if (actual === 'swapHands') log('手札が入れ替わった');
+    if (id === 'seal') log(`${nameOf(other(color))}は次の番、超能力が使えない`);
+    if (id === 'jam') { const n = allFx.filter((f) => f.kind === 'neutralized').length; log(n ? `まわりの碁石${n}個の超能力が消えた` : 'まわりに超能力の碁石がなかった'); }
+  }
 
   fillHand(p);
   if (actual === 'swapHands') fillHand(state.players[other(color)]);
@@ -781,7 +784,7 @@ function playMove(x, y, target = null) {
   if (winner) {
     state.phase = 'end';
     state.winner = winner;
-    log(`${nameOf(winner)}の勝ち`);
+    if (!trial) log(`${nameOf(winner)}の勝ち`);
     return { ok: true, ability: actual, rolled, steps, before, winner, extraTurn: false };
   }
 
@@ -789,21 +792,38 @@ function playMove(x, y, target = null) {
   const extraTurn = !!ab.extraTurn && p.hand.some((card) => card.ability === 'plain');
   let next = extraTurn ? color : other(color);
   state.chainTurn = extraTurn ? color : null;
-  if (ab.extraTurn && !extraTurn) log('手札にただの石がないので、連続の追加手はなし');
+  if (!trial && ab.extraTurn && !extraTurn) log('手札にただの石がないので、連続の追加手はなし');
   if (!piecesLeft(state.players[next])) {
-    log(`${nameOf(next)}は碁石を使い切った`);
+    if (!trial) log(`${nameOf(next)}は碁石を使い切った`);
     next = other(next);
   }
   const full = state.board.every((row) => row.every(Boolean));
   if (!piecesLeft(state.players[next]) || full) {
     state.phase = 'end';
     state.winner = null;
-    log(full ? '盤が埋まって、引き分け' : '碁石がなくなって、引き分け');
+    if (!trial) log(full ? '盤が埋まって、引き分け' : '碁石がなくなって、引き分け');
   } else {
-    if (extraTurn) log(`${nameOf(color)}がもう1回`);
+    if (!trial && extraTurn) log(`${nameOf(color)}がもう1回`);
     state.turn = next;
   }
   return { ok: true, ability: actual, rolled, steps, before, winner: null, extraTurn: extraTurn && state.phase === 'play' };
+}
+
+// 探索には専用の乱数を使い、実戦の乱数と石番号を復元する。
+function withMoveTrials(search) {
+  const originalUid = uidCounter;
+  const originalRng = rng;
+  const originalGrowthSeed = growthSeed;
+  const trialSeed = Math.floor(Math.random() * 2 ** 32);
+  rng = mulberry32(trialSeed);
+  growthSeed = trialSeed;
+  try {
+    return search();
+  } finally {
+    uidCounter = originalUid;
+    rng = originalRng;
+    growthSeed = originalGrowthSeed;
+  }
 }
 
 function describeFx(fx) {
@@ -1465,7 +1485,7 @@ async function maybeCpuMove() {
   state.cpuThinking = true;
   $(`panel-${state.turn}`).classList.add('is-thinking');
   await sleep(CPU_DELAY_MS);
-  const move = AI.chooseMove({ depth: 2 });
+  const move = AI.chooseDeepMove({ budgetMs: 35 });
   $(`panel-${state.turn}`).classList.remove('is-thinking');
   state.busy = false;
   state.cpuThinking = false;
@@ -2227,7 +2247,7 @@ if (typeof module !== 'undefined') {
   module.exports = {
     RULES_VERSION, encodeDeckCode, decodeDeckCode, deckAddError,
     setSeed, SIZE, ABILITIES, ICONS, SPECIAL_IDS, LINE_DIRS,
-    findWin, specialWin, lineOwner, countsFor, growth, newBoard, newPiece, playMove, resolvePlacement, snapshot, areaCells, settle, goTraps, mineCheck,
+    findWin, specialWin, lineOwner, countsFor, growth, newBoard, newPiece, playMove, withMoveTrials, resolvePlacement, snapshot, areaCells, settle, goTraps, mineCheck,
     state, makePlayer, STARTERS, COST, DECK_POINTS, MAX_COPIES, costOf, deckPoints, deckCount, deckList, hasReach, cardBlocked, spyCompletes, canSnipe, pushColumn, makeCard, effectiveAbility, canPlaceAt, inside, other, shuffle,
   };
 }

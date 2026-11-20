@@ -31,7 +31,7 @@ if (!isMainThread) {
   parentPort.on('message', ({ jobs }) => {
     const out = jobs.map(({ b, w }) => {
       Object.assign(state, {
-        phase: 'play', board: newBoard(), turn: 'b', selected: 0, sealed: null, jammed: null,
+        phase: 'play', board: newBoard(), turn: 'b', selected: 0, sealed: null, chainTurn: null, jammed: null,
         lastMove: null, fx: [], winLine: null, winner: undefined, moveCount: 0, logs: [],
         players: { b: makePlayer('b', b), w: makePlayer('w', w) },
       });
@@ -39,7 +39,7 @@ if (!isMainThread) {
         const m = AI.chooseMove({ depth: 2 });
         if (!m) break;
         state.selected = m.i;
-        if (!playMove(m.x, m.y).ok) break;
+        if (!playMove(m.x, m.y, m.target).ok) break;
       }
       return state.phase === 'end' ? state.winner : null;
     });
