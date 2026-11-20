@@ -7,7 +7,7 @@
   const G = (typeof module !== 'undefined' && typeof require === 'function')
     ? require('./script.js')
     // ブラウザでは script.js のトップレベルの名前がそのまま見える
-    : { state, SPECIAL_IDS, LINE_DIRS, SIZE, inside, other, countsFor, playMove, effectiveAbility, canPlaceAt, cardBlocked };
+    : { state, SPECIAL_IDS, LINE_DIRS, SIZE, inside, other, countsFor, playMove, effectiveAbility, canPlaceAt, cardBlocked, withSimulationRandom };
 
   // ===== 盤の評価：並びが長いほど、両端が空いているほど高い =====
   const SCORE = { 2: [1, 6, 25], 3: [6, 60, 400], 4: [30, 1500, 8000] };
@@ -64,7 +64,7 @@
   }
 
   // ===== 状態の保存と復元（手を試すため） =====
-  const KEYS = ['board', 'players', 'turn', 'selected', 'sealed', 'chainTurn', 'jammed', 'moveCount', 'phase', 'winner', 'winLine', 'lastMove'];
+  const KEYS = ['board', 'players', 'turn', 'selected', 'sealed', 'chainTurn', 'jammed', 'moveCount', 'phase', 'winner', 'winKind', 'winLine', 'lastMove', 'target'];
   // 状態のコピー。structuredClone より速いように、形の分かっているものだけを手で写す
   const copyPlayer = (p) => ({ ...p, bag: p.bag.map((c) => ({ ...c })), hand: p.hand.map((c) => ({ ...c })) });
   function clone(s) {
@@ -77,6 +77,19 @@
     return o;
   }
   function save() { return clone(G.state); }
+  function sampleWorld(snapshot) {
+    const world = clone(snapshot);
+    for (const { bag } of Object.values(world.players)) {
+      // Canonicalize the multiset before shuffling so a hidden permutation
+      // cannot change the result for the same search seed.
+      bag.sort((a, b) => a.ability.localeCompare(b.ability) || a.id - b.id);
+      for (let i = bag.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [bag[i], bag[j]] = [bag[j], bag[i]];
+      }
+    }
+    return world;
+  }
   function restore(s) {
     Object.assign(G.state, clone(s));
     G.state.logs = [];
@@ -144,10 +157,21 @@
   }
 
   function chooseMove(opts = {}) {
+    const { logs, fx } = G.state;
+    try {
+      return G.withSimulationRandom(() => search(opts));
+    } finally {
+      G.state.logs = logs;
+      G.state.fx = fx;
+    }
+  }
+
+  function search(opts) {
     const { depth = 2, cells = 14, topK = 8, replyCells = 10, noise = 6 } = opts;
     const st = G.state;
     const me = st.turn;
-    const base = save();
+    const actual = save();
+    const base = sampleWorld(actual);
 
     // 1手目：全部試して評価する
     const first = [];
@@ -156,7 +180,7 @@
       if (!apply(m).ok) continue;
       first.push({ m, score: evaluate(me), end: G.state.phase === 'end' });
     }
-    restore(base);
+    restore(actual);
     if (!first.length) return null;
     first.sort((a, b) => b.score - a.score);
     if (depth < 2 || first[0].score >= 1e9) {
@@ -186,7 +210,7 @@
       value += Math.random() * noise;
       if (!best || value > best.value) best = { m: f.m, value };
     }
-    restore(base);
+    restore(actual);
     return best.m;
   }
 
@@ -202,7 +226,35 @@
     return best.card;
   }
 
-  const AI = { chooseMove, draftPick, evaluate, lineScore, save, restore, PICK_VALUE };
+  // 各候補手の結果を採点する。はてなは同じ手を複数回試す。
+  function onePlyOutcomes(score, cells = 14, samples = 4, moves = genMoves(cells)) {
+    const base = save();
+    const logs = G.state.logs;
+    const fx = G.state.fx;
+    try {
+      return G.withSimulationRandom(() => {
+        const uncertainDraw = Object.values(base.players).some(({ bag }) =>
+          bag.some(card => card.ability !== bag[0].ability));
+        const worlds = Array.from({ length: uncertainDraw ? Math.min(samples, 2) : 1 }, () => sampleWorld(base));
+        return moves.flatMap((m) => {
+          restore(base);
+          const count = G.effectiveAbility(base.players[base.turn].hand[m.i], base.turn) === 'mystery' ? samples : worlds.length;
+          const outcomes = [];
+          for (let i = 0; i < count; i++) {
+            restore(worlds[i % worlds.length]);
+            if (apply(m).ok) outcomes.push(score(G.state, base.turn));
+          }
+          return outcomes.length ? [{ move: m, outcomes }] : [];
+        });
+      });
+    } finally {
+      restore(base);
+      G.state.logs = logs;
+      G.state.fx = fx;
+    }
+  }
+
+  const AI = { chooseMove, draftPick, evaluate, lineScore, specialScore, save, sampleWorld, restore, genMoves, apply, onePlyOutcomes, PICK_VALUE };
   if (typeof module !== 'undefined') module.exports = AI;
   else window.AI = AI;
 })();

@@ -71,6 +71,13 @@
       <span id="deck-copy-announcement" role="status"></span>
       <div id="select-cols" class="select-cols"></div>
       <div class="select-foot">
+        <label id="cpu-policy-field" class="name-field" hidden>
+          <span>CPU</span>
+          <select id="cpu-policy">
+            <option value="minimax">CPU Lv1</option>
+            <option value="attention-2" selected>CPU Lv2</option>
+          </select>
+        </label>
         <label id="name-field" class="name-field" hidden>
           <span>ユーザー名</span>
           <input id="my-name" maxlength="12" placeholder="名前はまだない" autocomplete="nickname">
@@ -209,5 +216,10 @@
   <script src="script.js"></script>
   <script src="fx.js"></script>
   <script src="ai.js"></script>
+  <script src="spatial.js"></script>
+  <script src="avi.js"></script>
+  <script src="tactics.js"></script>
+  <script src="cnn.js"></script>
+  <script src="models/cnn-practice.js"></script>
 </body>
 </html>

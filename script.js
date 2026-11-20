@@ -569,7 +569,21 @@ function mulberry32(a) {
   };
 }
 let rng = Math.random;
+let simulationDepth = 0;
 function setSeed(seed) { rng = mulberry32(seed); nextId = 1; }
+function withSimulationRandom(run) {
+  const previous = rng;
+  const previousUid = uidCounter;
+  simulationDepth++;
+  rng = Math.random;
+  try {
+    return run();
+  } finally {
+    rng = previous;
+    uidCounter = previousUid;
+    simulationDepth--;
+  }
+}
 const newSeed = () => Math.floor(Math.random() * 2 ** 31);
 
 function shuffle(arr) {
@@ -605,6 +619,7 @@ const piecesLeft = (p) => p.hand.length + p.bag.length;
 const state = {
   phase: 'title', // title | deck | online | play | end
   mode: 'pvp', // pvp（2人で対戦）| cpu（CPU と対戦）
+  cpuPolicy: 'attention-2',
   board: [],
   decks: { b: null, w: null }, // 対局に使うデッキ（{ 能力: 数 }）
   players: {},
@@ -643,6 +658,7 @@ function saveMyName(value) {
 const cleanName = (n) => String(n || '').replace(/[<>&"'`\u0000-\u001f]/g, '').trim().slice(0, 12);
 
 function log(text) {
+  if (simulationDepth) return;
   state.logs.unshift(text);
   if (typeof document !== 'undefined') renderLog();
 }
@@ -1098,6 +1114,7 @@ function renderSelect(preserveScroll = false) {
   const nameField = $('name-field');
   nameField.hidden = state.mode !== 'cpu' && state.mode !== 'online';
   $('word-field').hidden = state.mode !== 'online';
+  $('cpu-policy-field').hidden = state.mode !== 'cpu';
   const go = $('select-go');
   go.hidden = manage;
   go.textContent = twoCols ? 'この2つで対戦' : state.mode === 'online' ? 'このデッキで相手をさがす' : 'このデッキで対戦';
@@ -1142,6 +1159,7 @@ function confirmSelect() {
     const ref = state.choice[choiceSlot('w')];
     const theirs = ref === 'random' ? STARTERS[Math.floor(Math.random() * STARTERS.length)] : deckByRef(ref);
     if (!theirs || deckError(theirs.deck)) return;
+    if (state.mode === 'cpu') state.cpuPolicy = $('cpu-policy').value;
     state.decks = { b: mine.deck, w: theirs.deck };
     state.deckNames = { b: mine.name, w: theirs.name };
     startGame();
@@ -1460,7 +1478,9 @@ async function maybeCpuMove() {
   state.cpuThinking = true;
   $(`panel-${state.turn}`).classList.add('is-thinking');
   await sleep(CPU_DELAY_MS);
-  const move = AI.chooseMove({ depth: 2 });
+  const move = state.cpuPolicy === 'minimax'
+    ? AI.chooseMove({ depth: 2 })
+    : window.CNN.attentionMove(window.cnnPracticeModel);
   $(`panel-${state.turn}`).classList.remove('is-thinking');
   state.busy = false;
   state.cpuThinking = false;
@@ -2220,7 +2240,7 @@ if (typeof document !== 'undefined') {
 if (typeof module !== 'undefined') {
   module.exports = {
     RULES_VERSION, encodeDeckCode, decodeDeckCode, deckAddError,
-    setSeed, SIZE, ABILITIES, ICONS, SPECIAL_IDS, LINE_DIRS,
+    setSeed, withSimulationRandom, SIZE, ABILITIES, ICONS, SPECIAL_IDS, LINE_DIRS,
     findWin, specialWin, lineOwner, countsFor, growth, newBoard, newPiece, playMove, resolvePlacement, snapshot, areaCells, settle, goTraps, mineCheck,
     state, makePlayer, STARTERS, COST, DECK_POINTS, MAX_COPIES, costOf, deckPoints, deckCount, deckList, hasReach, cardBlocked, spyCompletes, canSnipe, pushColumn, makeCard, effectiveAbility, canPlaceAt, inside, other, shuffle,
   };
