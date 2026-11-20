@@ -62,6 +62,7 @@
     if (!e) { e = new Engine(canvas); engines.set(canvas, e); }
     return e;
   }
+  const targetEngine = (t) => t?.timeline || (t?.canvas ? engine(t.canvas) : null);
   class Engine {
     constructor(canvas) { this.c = canvas; this.ctx = canvas.getContext('2d'); this.ps = []; this.amb = null; this.raf = 0; this.w = 0; this.h = 0; }
     fit() {
@@ -519,6 +520,24 @@
     ELEMENTS,
     elementOf: (ability) => ELEMENT_OF[ability] || null,
     anticipationOf: (ability) => (ability === 'nuke' ? 0.55 : ANTICIPATION[ELEMENT_OF[ability]] || 0.2),
+    // 描画を予約し、実時間のタイマーを使わず指定時刻の演出を描く。
+    record(t, schedule) {
+      const particles = [];
+      const timeline = { add: (life, draw, delay = 0) => particles.push({ life, draw, delay }) };
+      schedule({ ...t, timeline });
+      return {
+        duration: particles.reduce((last, p) => Math.max(last, p.delay + p.life), 0),
+        draw(c, seconds) {
+          for (const { life, draw, delay } of particles) {
+            const elapsed = seconds - delay;
+            if (elapsed < 0 || elapsed >= life) continue;
+            c.save();
+            draw(c, elapsed / life);
+            c.restore();
+          }
+        },
+      };
+    },
     // 予兆：届く範囲に点線の枠。石のまわりに細い輪が脈打つ
     anticipate(t, ability, x, y, opts = {}) {
       const el = ELEMENT_OF[ability];
@@ -550,8 +569,9 @@
     },
     // ただの石：細い輪がひとつ広がり、小さな丸が少し散る。盤もごく小さく揺れる
     plain(t, x, y, color) {
-      if (!t || !t.canvas) return;
-      const e = engine(t.canvas), s = t.cell;
+      const e = targetEngine(t);
+      if (!e) return;
+      const s = t.cell;
       const [px, py] = t.map(x, y);
       P.ring(e, px, py, s, { col: INK, wid: 0.05, far: 0.95, near: 0.45, dur: 0.32, split: 0 });
       P.dots(e, px, py, s, { n: 4, cols: [color === 'w' ? '#8a6a3a' : INK, '#8a6a3a'], speed: 0.8, grav: 0.1, dur: 0.35, size: 0.06 });
@@ -560,8 +580,10 @@
     // 衝撃と余韻
     burst(t, ability, x, y, opts = {}) {
       const rc = RECIPE[ability];
-      if (!t || !t.canvas || !rc) return;
-      const e = engine(t.canvas), s = t.cell;
+      if (!rc) return;
+      const e = targetEngine(t);
+      if (!e) return;
+      const s = t.cell;
       const [px, py] = t.map(x, y);
       // 平らな閃光（届く範囲が一瞬クリーム色に）
       if (opts.area && opts.area.length) P.flash(e, areaRect(t, x, y, opts.area));
@@ -588,8 +610,9 @@
     },
     // あとの段階
     after(t, list, board, o = {}) {
-      if (!t || !t.canvas) return;
-      const e = engine(t.canvas), s = t.cell;
+      const e = targetEngine(t);
+      if (!e) return;
+      const s = t.cell;
       const [ox, oy] = o.origin ? t.map(o.origin[0], o.origin[1]) : [0, 0];
       for (const f of list) {
         const [px, py] = t.map(f.x, f.y);

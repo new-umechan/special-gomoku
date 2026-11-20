@@ -1438,6 +1438,7 @@ function startGame(seed = newSeed()) {
   state.fx = [];
   state.winLine = null;
   state.history = [];
+  state.shareReplay = null;
   state.winner = undefined;
   state.moveCount = 0;
   state.pending = null;
@@ -1726,9 +1727,7 @@ function selectCard(i) {
 function renderStatus() {
   const status = $('game-status');
   if (state.phase === 'end') {
-    status.innerHTML = `<span class="status-text">${state.winner ? `${escapeHTML(playerName(state.winner))}の勝ち` : '引き分け'}</span>`
-      + `<button type="button" class="btn-primary btn-small" id="again-inline"${state.busy ? ' disabled' : ''}>もう一局</button>`;
-    $('again-inline').addEventListener('click', playAgain);
+    status.innerHTML = `<span class="status-text">${state.winner ? `${escapeHTML(playerName(state.winner))}の勝ち` : '引き分け'}</span>`;
   } else {
     const choose = !selectedCard() && !notMine(state.turn);
     const hint = state.chainTurn === state.turn ? 'ただの石だけ置ける' : choose ? '手札から碁石を選ぶ' : '';
@@ -1822,6 +1821,7 @@ async function place(x, y, remote = false, target = null) {
   const sent = selectedCard();
   if (state.mode === 'online' && !remote && sent) Net.send('move', { id: sent.id, x, y, target });
   const playedId = sent && effectiveAbility(sent, color);
+  const beforeMove = snapshot(state.board);
   const res = playMove(x, y, target);
   // 棋譜：画面で実際に置いた手だけを残す（CPU の読みの中の手は入れない）
   if (res.ok) (state.history = state.history || []).push({ color, id: playedId, actual: res.ability, x, y, target });
@@ -1874,6 +1874,9 @@ async function place(x, y, remote = false, target = null) {
   state.fx = [];
   renderGame();
   if (state.phase === 'end') {
+    if (res.winner) {
+      state.shareReplay = { beforeMove, placed: res.before, steps: res.steps, x, y, color, ability: res.ability, rolled: res.rolled };
+    }
     state.queued = null;
     if (state.mode === 'online') state.onlineFinish = Net.finish();
     showResult(color);
@@ -1962,7 +1965,6 @@ function showResult(mover) {
   $('result-sub').textContent = sub;
   state.resultText = text;
   state.resultSub = sub;
-  $('deck-again').hidden = state.mode === 'online';
   const happy = state.winner && !notMine(state.winner);
   if (happy) Sound.win(); else Sound.lose();
   $('result-dialog').showModal();
@@ -2187,7 +2189,7 @@ function init() {
   });
   $('again-btn').addEventListener('click', playAgain);
   renderTitleArt();
-  $('look-btn').addEventListener('click', () => $('result-dialog').close());
+  $('result-dialog').addEventListener('cancel', (e) => e.preventDefault());
   $('deck-again').addEventListener('click', () => startSelect(state.mode));
   $('rules-btn').addEventListener('click', () => $('rules-dialog').showModal());
   $('log-btn').addEventListener('click', () => $('log-dialog').showModal());
@@ -2195,8 +2197,8 @@ function init() {
   const renderSoundBtn = () => { soundBtn.classList.toggle('is-muted', Sound.muted); soundBtn.setAttribute('aria-pressed', String(!Sound.muted)); };
   soundBtn.addEventListener('click', () => { Sound.setMuted(!Sound.muted); renderSoundBtn(); });
   renderSoundBtn();
-  // ダイアログの外側（中身の枠より外）を押したら閉じる
-  for (const d of document.querySelectorAll('dialog')) {
+  // 結果画面ではボタンで次の行き先を選ぶ。他のダイアログは外側を押すと閉じる。
+  for (const d of document.querySelectorAll('dialog:not(#result-dialog)')) {
     d.addEventListener('click', (e) => { if (e.target === d) d.close(); });
   }
   document.addEventListener('keydown', onKey);

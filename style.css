@@ -374,7 +374,6 @@ body[data-screen="title"] main { padding-bottom: 0; }
 .status { display: flex; align-items: center; gap: 8px; margin: 0; min-height: 26px; }
 .status-text { font-size: 17px; font-weight: 700; }
 .status-hint { color: var(--muted); font-size: 13px; }
-.status .btn-primary { margin-left: auto; }
 
 .board-wrap {
   position: relative;
@@ -633,9 +632,41 @@ body[data-screen="title"] main { padding-bottom: 0; }
 #result-dialog .dialog-body { padding-inline: clamp(12px, 5vw, 24px); }
 .result-text { font-family: var(--font-display); font-size: 30px; text-align: center; margin: 8px 0; }
 .result-sub { text-align: center; color: var(--muted); margin: 0; }
-.result-actions { display: grid; justify-items: center; gap: 12px; margin-top: 20px; }
-.result-secondary-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 clamp(8px, 3vw, 16px); }
-.result-secondary-actions .btn-text { padding-inline: 0; font-size: 14px; white-space: nowrap; }
+.result-actions { display: grid; gap: 15px; margin-top: 24px; }
+#again-btn {
+    display: flex;
+    min-height: 62px;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 10px 20px;
+    border-radius: 20px;
+    box-shadow: 0 5px 0 #a63828;
+    font-size: 23px;
+    transition: transform 120ms ease-out, box-shadow 120ms ease-out;
+}
+#again-btn svg {
+    width: 25px;
+    height: 25px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+@media (hover: hover) {
+    #again-btn:hover { transform: translateY(-2px); box-shadow: 0 7px 0 #a63828; }
+}
+#again-btn:active { transform: translateY(4px); box-shadow: 0 1px 0 #a63828; }
+#again-btn:focus-visible, #share-btn:focus-visible { outline: 2px solid var(--text); outline-offset: 5px; }
+@media (prefers-reduced-motion: no-preference) {
+    #result-dialog[open] #again-btn svg { animation: result-replay-turn 450ms 120ms ease-out both; }
+}
+@keyframes result-replay-turn { from { transform: rotate(-90deg); } to { transform: rotate(0); } }
+.result-secondary-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.result-secondary-actions .btn-text { min-height: 44px; padding-inline: 6px; font-size: 14px; }
+#share-btn { width: 44px; height: 44px; border: 1px solid var(--line); border-radius: 50%; }
+#share-btn:hover { color: var(--text); background: var(--accent-soft); }
 
 /* ===== 演出の粒（fx.js）。盤より少し大きいキャンバスを重ね、粒がはみ出せるようにする ===== */
 .board-fx {
@@ -1494,12 +1525,14 @@ body[data-screen="title"] main { padding-bottom: 0; }
 .share-dialog .dialog-actions { margin-top: 12px; }
 .share-dialog .dialog-actions a { text-decoration: none; white-space: nowrap; }
 .share-hint { margin: 8px 0 0; font-size: 13px; text-align: center; }
+.share-format { display: flex; padding: 2px; gap: 2px; border: 1px solid var(--line); border-radius: 999px; }
+.share-format .btn-icon { width: 44px; height: 44px; border-radius: 50%; }
+.share-format .btn-icon svg { width: 23px; height: 23px; }
+.share-format .btn-icon:hover { color: var(--text); }
+.share-format .btn-icon[aria-pressed="true"] { background: var(--accent-soft); color: var(--text); }
+.share-format .btn-icon:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* 結果のダイアログ：ボタンの文字を途中で折り返さない。入らなければ、ボタンごと次の行へ */
 .dialog-actions { flex-wrap: wrap; justify-content: center; gap: 10px 18px; }
 .dialog-actions button { white-space: nowrap; }
 .dialog-actions .btn-primary { font-family: var(--font-body); font-weight: 700; padding: 0.7em 1.6em; }
-@media (pointer: coarse) {
-  .result-secondary-actions button { min-height: 44px; }
-  #share-btn { min-width: 72px; }
-}

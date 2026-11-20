@@ -1,4 +1,4 @@
-// 棋譜のシェア：対局の結果を1枚の画像（1200×675 の横長。X のタイムラインで切れずに見える）にして、共有・保存する。
+// 棋譜のシェア：盤面の PNG と、決着手を繰り返す GIF を共有・保存する。
 // 比べた型（縦長のポスターなど）も残してある。tools/share-compare.html で見比べられる。
 // 画像には、結果・2人の名前とデッキ・最後の盤（揃った列を光らせる）・最後の手・使われた超能力・手数・URL を載せる。
 (function () {
@@ -122,9 +122,9 @@
   // ===== 比べるための別の型 =====
   const BODY = '"Zen Maru Gothic", system-ui, sans-serif';
   const DISPLAY = '"Dela Gothic One", "Zen Maru Gothic", sans-serif';
-  async function fonts() {
+  async function fonts(extra = '') {
     const text = ['超能力五目並べ', 'VS 勝ち 引き分け 手・超能力回 使われた超能力は使われなかった 黒白 0123456789×', state.resultNote, state.resultText, state.resultSub,
-      playerName('b'), playerName('w'), state.deckNames && state.deckNames.b, state.deckNames && state.deckNames.w, URL_TEXT].filter(Boolean).join('');
+      playerName('b'), playerName('w'), state.deckNames && state.deckNames.b, state.deckNames && state.deckNames.w, URL_TEXT, extra].filter(Boolean).join('');
     try {
       await Promise.all([
         document.fonts.load('80px "Dela Gothic One"', text),
@@ -133,11 +133,12 @@
       ]);
     } catch (e) { /* 字が読めなくても続ける */ }
   }
-  function canvas(w, h, bg = C.bg) { const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const c = cv.getContext('2d'); c.fillStyle = bg; c.fillRect(0, 0, w, h); return [cv, c]; }
+  function canvas(w, h, bg = C.bg, options) { const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const c = cv.getContext('2d', options); c.fillStyle = bg; c.fillRect(0, 0, w, h); return [cv, c]; }
   const toBlob = (cv) => new Promise((r) => cv.toBlob(r, 'image/png'));
   const center = (c, text, x, y) => { c.textAlign = 'center'; c.fillText(text, x, y); c.textAlign = 'left'; };
+  const BOARD_PADDING = 0.035;
   // 盤を描く（揃った列は黄色、最後の手は赤い輪）
-  async function drawBoard(c, bx, by, bs, { pad = bs * 0.035, frame = true, position = state } = {}) {
+  async function drawBoard(c, bx, by, bs, { pad = bs * BOARD_PADDING, frame = true, position = state } = {}) {
     const cell = (bs - pad * 2) / (SIZE - 1);
     if (frame) { c.fillStyle = C.board; roundRect(c, bx, by, bs, bs, bs * 0.025); c.fill(); }
     c.strokeStyle = C.line; c.lineWidth = Math.max(1.5, bs / 450);
@@ -330,23 +331,30 @@
   }
 
   // B4：横長（1200×675、X のタイムラインでそのまま見える形）。左に盤、右に結果
-  async function landscape(inPlay = false) {
-    const position = { board: snapshot(state.board), winLine: state.winLine, lastMove: state.lastMove };
-    const players = ['b', 'w'].map(playerInfo);
-    const used = usedList();
-    const moves = state.moveCount;
-    const winner = inPlay ? null : state.winner;
-    const title = inPlay ? '対局中' : state.resultText || $('result-text')?.textContent || '';
-    const note = inPlay ? '' : state.resultNote;
-    await fonts();
-    const LW = 1200, LH = 675;
-    const [cv, c] = canvas(LW, LH);
-    const bs = 595; await drawBoard(c, 40, 40, bs, { position });
-    const cx = 40 + bs + (LW - 40 - bs) / 2;
+  const LW = 1200, LH = 675;
+  const landscapeBoard = { x: 40, y: 40, size: 595 };
+  function landscapeData(inPlay = false) {
+    return {
+      position: { board: snapshot(state.board), winLine: inPlay ? null : state.winLine, lastMove: state.lastMove },
+      players: ['b', 'w'].map(playerInfo),
+      used: usedList(),
+      moves: state.moveCount,
+      winner: inPlay ? null : state.winner,
+      title: inPlay ? '対局中' : $('result-text')?.textContent || state.resultText || '',
+      note: inPlay ? '' : state.resultNote,
+    };
+  }
+
+  async function drawLandscape(c, { position, players, used, moves, winner, title, note, subtitle }) {
+    c.fillStyle = C.bg; c.fillRect(0, 0, LW, LH);
+    const { x, y, size: bs } = landscapeBoard;
+    await drawBoard(c, x, y, bs, { position });
+    const cx = x + bs + (LW - x - bs) / 2;
     const times = used.reduce((n, [, k]) => n + k, 0);
     c.fillStyle = C.muted; c.font = `28px ${DISPLAY}`; center(c, '超能力五目並べ', cx, 110);
     c.fillStyle = winner ? C.accent : C.ink; c.font = `64px ${DISPLAY}`; center(c, fitText(c, title, LW - bs - 120), cx, 196);
-    c.fillStyle = C.muted; c.font = `700 24px ${BODY}`; center(c, fitText(c, note ? `${note}　${moves}手・超能力${times}回` : `${moves}手・超能力${times}回`, LW - bs - 100), cx, 242);
+    const stats = `${moves}手・超能力${times}回`;
+    c.fillStyle = C.muted; c.font = `700 24px ${BODY}`; center(c, fitText(c, subtitle ?? (note ? `${note}　${stats}` : stats), LW - bs - 100), cx, 242);
     // 2人を縦に
     for (const [i, col] of ['b', 'w'].entries()) {
       const p = players[i], y = 330 + i * 70;
@@ -358,12 +366,80 @@
     let ux = cx - (top.length * item - 14) / 2;
     for (const [id, n] of top) { await stone(c, ux + r, 540, r, { color: 'b', ability: id }); c.fillStyle = C.ink; c.font = `700 20px ${BODY}`; c.fillText(`×${n}`, ux + r * 2 + 6, 548); ux += item; }
     c.fillStyle = C.muted; c.font = `700 18px ${BODY}`; center(c, URL_TEXT, cx, LH - 34);
+  }
+
+  async function landscape(data = landscapeData()) {
+    await fonts();
+    const [cv, c] = canvas(LW, LH);
+    await drawLandscape(c, data);
     return toBlob(cv);
+  }
+
+  function replayFrames(data, replay, move) {
+    const { beforeMove, placed, steps, x, y, color, ability } = replay;
+    const { x: bx, y: by, size } = landscapeBoard;
+    const pad = size * BOARD_PADDING;
+    const cell = (size - 2 * pad) / (SIZE - 1);
+    const target = { cell, map: (cx, cy) => [bx + pad + cx * cell, by + pad + cy * cell] };
+    const uid = placed[y][x].uid;
+    const lead = { ...data, winner: null, title: '決着の一手', subtitle: move };
+    const frames = [
+      { ...lead, title: '決着の直前', subtitle: `${data.moves}手目`, position: { board: beforeMove }, delay: 650 },
+      { ...lead, position: { board: placed, lastMove: [x, y] }, delay: 100,
+        effect: FX.record(target, (t) => FX.plain(t, x, y, color)) },
+    ];
+    steps.forEach(({ board, fx }, i) => {
+      const effect = FX.record(target, (t) => {
+        if (i === 0 && FX.elementOf(ability)) {
+          FX.burst(t, ability, x, y, { fx, area: areaCells(ability, x, y, placed) });
+        } else {
+          FX.after(t, i === 0 ? fx.slice(1) : fx, board, { origin: [x, y] });
+        }
+      });
+      if (i === 0 && fx.length === 1 && !effect.duration) return;
+      frames.push({ ...lead, position: { board, lastMove: findUid(board, uid) }, effect, delay: 140 });
+    });
+    frames.push({ ...data, delay: 1500 });
+    return frames;
+  }
+
+  async function makeReplayGif(data, replay, isCurrent) {
+    const { ability, color, rolled } = replay;
+    const name = `${rolled ? 'はてな → ' : ''}${ABILITIES[ability].name}`;
+    const move = `${data.players.find((player) => player.col === color).name}が${name}を置いた`;
+    await fonts(`決着の直前 決着の一手 ${move}`);
+    const [backdrop, base] = canvas(LW, LH);
+    const [, c] = canvas(LW, LH, C.bg, { willReadFrequently: true });
+    const { GIFEncoder, quantize, applyPalette } = Gifenc;
+    const gif = GIFEncoder();
+    async function writeFrame(delay, effect, seconds) {
+      c.drawImage(backdrop, 0, 0);
+      if (effect) effect.draw(c, seconds);
+      const { data: rgba } = c.getImageData(0, 0, LW, LH);
+      const palette = quantize(rgba, 256);
+      gif.writeFrame(applyPalette(rgba, palette), LW, LH, { palette, delay, repeat: 0 });
+      // フレームの間に閉じる操作や形式の切り替えを受け付ける。
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    for (const frame of replayFrames(data, replay, move)) {
+      if (!isCurrent()) return null;
+      await drawLandscape(base, frame);
+      const interval = 60;
+      const duration = Math.min(800, (frame.effect?.duration || 0) * 1000);
+      for (let ms = 0; ms < duration; ms += interval) {
+        if (!isCurrent()) return null;
+        await writeFrame(interval, frame.effect, (ms + interval / 2) / 1000);
+      }
+      if (!isCurrent()) return null;
+      await writeFrame(frame.delay);
+    }
+    gif.finish();
+    return new Blob([gif.bytesView()], { type: 'image/gif' });
   }
 
   const LAYOUTS = { classic: makeImage, poster, versus, journey, posterBig, posterBleed, posterTall, landscape };
 
-  let shareData, url, shareMode, request;
+  let session, shareData, url, shareMode, request;
 
   function clearShare() {
     request = null;
@@ -379,9 +455,10 @@
     const composer = $('share-x');
     button.hidden = mode === 'paste';
     composer.hidden = mode !== 'paste';
+    const label = request.format === 'gif' ? 'GIF' : '画像';
     let hint;
     if (mode === 'native') {
-      button.textContent = '端末で画像を共有';
+      button.textContent = `端末で${label}を共有`;
       hint = '端末の共有メニューでXやLINEを選べます。';
     } else if (mode === 'copy') {
       button.textContent = 'Xに投稿する画像をコピー';
@@ -389,65 +466,80 @@
     } else if (mode === 'paste') {
       hint = '画像をコピーしました。Xの投稿欄で貼り付けてください。';
     } else {
-      button.textContent = '画像を保存してXを開く';
-      hint = '保存した画像は、Xの投稿やLINEのトークに添付できます。';
+      button.textContent = `${label}を保存してXを開く`;
+      hint = `保存した${label}は、Xの投稿やLINEのトークに添付できます。`;
     }
     $('share-hint').textContent = notice + hint;
   }
-  async function openShare() {
+  function openShare() {
     const dialog = $('share-dialog');
     if (dialog.open) return;
+    const inPlay = state.phase === 'play' || state.busy;
+    const imageData = landscapeData(inPlay);
+    const replay = !inPlay && state.winner ? state.shareReplay : null;
+    session = { imageData, replay, blobs: {}, text: `${imageData.title}（${imageData.moves}手） #超能力五目並べ` };
+    prepareShare(replay ? 'gif' : 'png');
+    dialog.showModal();
+  }
+
+  async function prepareShare(format) {
     clearShare();
-    const current = {};
+    const { imageData, replay, blobs, text } = session;
+    const current = { format };
     request = current;
+    const isCurrent = () => request === current && $('share-dialog').open;
     const preview = $('share-img');
     const actions = $('share-actions');
     const hint = $('share-hint');
-    const inPlay = state.phase === 'play';
-    const title = inPlay ? '対局中' : $('result-text').textContent || state.resultText;
-    const text = `${title}（${state.moveCount}手） #超能力五目並べ`;
-    $('share-back').textContent = $('result-dialog').open ? '結果に戻る' : '盤面に戻る';
+    const gif = format === 'gif';
+    const label = gif ? 'GIF' : '画像';
+    $('share-format').hidden = !replay;
+    $('share-gif').setAttribute('aria-pressed', String(gif));
+    $('share-png').setAttribute('aria-pressed', String(!gif));
+    preview.alt = gif ? '決着手の繰り返し' : '対局の盤面';
+    $('share-save').textContent = `${label}を保存`;
     preview.hidden = true;
     actions.hidden = true;
-    hint.textContent = '対局画像を作成しています…';
-    dialog.showModal();
+    hint.textContent = gif ? '決着GIFを作成しています…' : '対局画像を作成しています…';
     try {
-      const blob = await landscape(inPlay);
-      if (request !== current || !dialog.open) return;
+      const blob = blobs[format] || await (gif ? makeReplayGif(imageData, replay, isCurrent) : landscape(imageData));
+      if (!isCurrent()) return;
       if (!blob) throw new Error('画像を作成できませんでした');
+      blobs[format] = blob;
       url = URL.createObjectURL(blob);
       preview.src = url;
-      const file = new File([blob], 'special-gomoku.png', { type: 'image/png' });
+      const file = new File([blob], `special-gomoku.${format}`, { type: blob.type });
       const image = { files: [file] };
       const gameUrl = `https://${URL_TEXT}/`;
       const touch = matchMedia('(pointer: coarse)').matches;
       const post = { ...image, text, url: gameUrl };
       let native = null;
       if (navigator.share && navigator.canShare?.(image)) {
-        // スマホでは共有先が投稿文やURLを優先しないよう、PNGだけを渡す。
+        // スマホでは共有先が投稿文や URL を優先しないよう、ファイルだけを渡す。
         native = !touch && navigator.canShare(post) ? post : image;
       }
       const intent = new URL('https://twitter.com/intent/tweet');
       intent.searchParams.set('text', text);
       intent.searchParams.set('url', gameUrl);
       $('share-x').href = intent.href;
-      const canCopy = !touch && !!(navigator.clipboard?.write && window.ClipboardItem &&
+      const canCopy = !gif && !touch && !!(navigator.clipboard?.write && window.ClipboardItem &&
         (ClipboardItem.supports?.('image/png') ?? true));
-      shareData = { file, native, canCopy };
+      shareData = { file, native, canCopy, format };
       $('share-go').disabled = false;
       const notice = window.isSecureContext === false ? '端末で共有するにはHTTPSで開いてください。' : '';
       setShareMode(native ? 'native' : canCopy ? 'copy' : 'download', notice);
       preview.hidden = false;
       actions.hidden = false;
     } catch (error) {
+      if (!isCurrent()) return;
       console.error('対局画像を作成できませんでした', error);
-      if (request === current && dialog.open) hint.textContent = '画像を作れませんでした。閉じてもう一度お試しください。';
+      hint.textContent = gif ? 'GIFを作れませんでした。静止画に切り替えられます。' : '画像を作れませんでした。閉じてもう一度お試しください。';
     }
   }
   function save() {
-    if (!url) return;
+    if (!shareData) return;
     const a = document.createElement('a');
-    a.href = url; a.download = `special-gomoku-${Date.now()}.png`;
+    a.href = url; a.download = `special-gomoku-${Date.now()}.${shareData.format}`;
     document.body.appendChild(a); a.click(); a.remove();
   }
   async function share(mode) {
@@ -474,7 +566,8 @@
       if (mode === 'native') data.native = null;
       else data.canCopy = false;
       const action = mode === 'native' ? '共有' : 'コピー';
-      setShareMode(data.native ? 'native' : data.canCopy ? 'copy' : 'download', `画像を${action}できませんでした。`);
+      const label = data.format === 'gif' ? 'GIF' : '画像';
+      setShareMode(data.native ? 'native' : data.canCopy ? 'copy' : 'download', `${label}を${action}できませんでした。`);
       button.disabled = false;
       if ($('share-dialog').open) button.focus();
     } finally {
@@ -487,8 +580,15 @@
     $('share-btn').addEventListener('click', openShare);
     $('share-board-btn').addEventListener('click', openShare);
     $('share-dialog').addEventListener('close', (event) => {
-      if (!event.currentTarget.open) clearShare();
+      if (event.currentTarget.open) return;
+      session = null;
+      clearShare();
     });
+    for (const format of ['gif', 'png']) {
+      $(`share-${format}`).addEventListener('click', () => {
+        if (request?.format !== format) prepareShare(format);
+      });
+    }
     $('share-back').addEventListener('click', () => $('share-dialog').close());
     $('share-save').addEventListener('click', save);
     $('share-go').addEventListener('click', () => share(shareMode));
