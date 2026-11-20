@@ -4,7 +4,7 @@
 function createDeckRules(abilities, specialIds) {
     // 24ポイントまで組める。ただの石は1ポイント。強い碁石ほど高い（数と強さのトレードオフ）
     // 碁石の追加・削除、コスト・能力・対局ルールの変更時に上げる。UI の変更では上げない。
-    const RULES_VERSION = 6;
+    const RULES_VERSION = 7;
     const DECK_POINTS = 24;
     const MAX_COPIES = 3; // 同じ超能力は3つまで
     const cardIds = ['plain', ...specialIds];

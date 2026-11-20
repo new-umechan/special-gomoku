@@ -101,7 +101,7 @@ const ABILITIES = {
     spinBack: { cost: 3, name: '逆回転', desc: 'まわりの8マスを、反時計回りに1つずらす', onPlace: (b, x, y) => spinRing(b, x, y, -1), area: 'ring' },
     cataclysm: { cost: 5, name: '天変地異', desc: '盤ぜんぶを、時計回りに90度回す', onPlace: (b) => cataclysmAbility(b) },
     mystery: { cost: 2, name: 'はてな', desc: '置くまで何の超能力か分からない。置いた瞬間にくじで決まる' },
-    flipAround: { cost: 5, name: 'あべこべ', desc: 'まわり8マスの石の色を、白と黒で入れ替える', onPlace: (b, x, y) => flipColors(b, DIRS8.map(([dx, dy]) => [x + dx, y + dy])), area: 'ring' },
+    flipAround: { cost: 6, name: 'あべこべ', desc: 'まわり8マスの石の色を、白と黒で入れ替える', onPlace: (b, x, y) => flipColors(b, DIRS8.map(([dx, dy]) => [x + dx, y + dy])), area: 'ring' },
     revolution: { cost: 8, name: '革命', desc: '盤の石の色が、全部白と黒で入れ替わる', onPlace: (b) => flipColors(b, b.flatMap((row, y) => row.map((_, x) => [x, y]))) },
     swapHands: { cost: 3, name: '交換', desc: '自分と相手の手札を、そっくり入れ替える', onPlace: (b, x, y, c, st) => swapHandsAbility(st) },
     fastForward: { cost: 2, name: '早送り', desc: '盤の時限爆弾と増殖を、2手ぶん進める', onPlace: (b, x, y, c, st) => fastForwardAbility(b, st), area: 'timers' },
