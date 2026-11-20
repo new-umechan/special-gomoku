@@ -1,22 +1,14 @@
 'use strict';
 
 // ブラウザと Node のツールで使うデッキのルール。
-function createDeckRules(specialIds) {
+function createDeckRules(abilities, specialIds) {
     // 24ポイントまで組める。ただの石は1ポイント。強い碁石ほど高い（数と強さのトレードオフ）
     // 碁石の追加・削除、コスト・能力・対局ルールの変更時に上げる。UI の変更では上げない。
     const RULES_VERSION = 6;
     const DECK_POINTS = 24;
     const MAX_COPIES = 3; // 同じ超能力は3つまで
-    const COST = {
-        plain: 1,
-        gravity: 2, antigravity: 2, mine: 2, jam: 2, go: 2, weight: 2, shield: 2, wall: 2, joker: 2, push: 2,
-        mystery: 2, fastForward: 2,
-        timeBomb: 3, warp: 3, swapHands: 3, rowBomb: 3, colBomb: 3, spin: 3, spinBack: 3, clone: 3, cloneH: 3, cloneV: 3, seal: 3, suck: 3, flag: 3,
-        bomb: 4, diagBomb: 4, takeover: 4, grow: 4,
-        sniper: 5, chain: 5, othello: 5, cataclysm: 5, flipAround: 5, nuke: 6,
-        revolution: 8,
-        spy: 3, // リーチがあると置けないので、安くした
-    };
+    const cardIds = ['plain', ...specialIds];
+    const COST = Object.fromEntries(cardIds.map((id) => [id, abilities[id].cost]));
     const costOf = (id) => COST[id] || 3;
     // デッキは { 能力: 数 }。ただの石も含む
     const deckPoints = (deck) => Object.entries(deck).reduce((s, [id, n]) => s + costOf(id) * n, 0);
@@ -30,7 +22,7 @@ function createDeckRules(specialIds) {
         { id: 'nuclear', name: '一発逆転', note: '核が2つ', deck: { plain: 12, nuke: 2 } },
     ];
 
-    const CATALOG = ['plain', ...specialIds].sort((x, y) => costOf(x) - costOf(y));
+    const CATALOG = cardIds.sort((x, y) => costOf(x) - costOf(y));
     const DECK_CODE_PREFIX = 'GOMOKU1.'; // デッキコードの形式。ルールの版とは別
     const DECK_CODE_MAX_LENGTH = 2048;
     const maxCopiesOf = (id) => id === 'plain' ? Infinity : MAX_COPIES;

@@ -69,7 +69,7 @@ const ICONS = {
 };
 
 // ===== 超能力 =====
-// 能力を足すときは、ここに1件足す（アイコンは ICONS に同じ id で足す）。
+// 能力の名前・説明・コストをここに書く（アイコンは ICONS に同じ id で足す）。
 //   onPlace(board, x, y, color, state) … 置いたときの効果。盤を書き換え、演出用の fx 配列を返す
 //     fx の kind: placed / moved（fromX, fromY つき）/ flipped / gone
 //   extraTurn … 置いたあと、もう1手打てる
@@ -79,45 +79,45 @@ const ICONS = {
 // 揃いの数え方は countLine() と lineOwner() で扱う（joker / spy）。
 // 外したもの：四目・ダブル（時間を縮めても強すぎた）、磁石・寂しがり（動きが分かりにくかった）、裏返し（強すぎた）
 const ABILITIES = {
-  plain: { name: 'ただの石', desc: '' },
-  block: { name: '石垣', desc: '' }, // 石垣が立てる、誰のものでもない石
-  joker: { name: 'ジョーカー', desc: '白にも黒にもなる。相手の列にも入る' },
-  push: { name: '押し出し', desc: 'まわりの石を1マス外へ押す。盤から落ちた石は消える', onPlace: pushAbility, area: 'ring' },
-  suck: { name: '吸い込み', desc: '2マス先の石を1マス手前まで吸い寄せる', onPlace: suckAbility, area: 'ring2' },
-  nuke: { name: '核', desc: 'まわり5×5の石を消す。置いた石と盾は残る', onPlace: nukeAbility, area: 'sq5' },
-  timeBomb: { name: '時限爆弾', desc: '2手あとに爆発して、まわりの石と一緒に消える', area: 'ring' },
-  bomb: { name: '爆弾', desc: 'まわりの石を全部消す', onPlace: bombAbility, area: 'ring' },
-  rowBomb: { name: '横爆弾', desc: '左右2マスずつの石を消す', onPlace: (b, x, y) => lineBomb(b, x, y, [[1, 0]]), area: 'row' },
-  colBomb: { name: '縦爆弾', desc: '上下2マスずつの石を消す', onPlace: (b, x, y) => lineBomb(b, x, y, [[0, 1]]), area: 'col' },
-  diagBomb: { name: 'ななめ爆弾', desc: 'ななめ4方向に2マスずつの石を消す', onPlace: (b, x, y) => lineBomb(b, x, y, [[1, 1], [1, -1]]), area: 'diag' },
-  flag: { name: '旗', desc: '上下左右の4マスが全部自分の石になったら勝ち', area: 'cross' },
-  grow: { name: '増殖', desc: '盤にある間、自分の番が2回来るたびに、隣の空きマスに石が1つ増える', area: 'cross' },
-  othello: { name: 'オセロ', desc: '相手の石をちょうど1個はさんだら、その石を自分の色にする', onPlace: othelloAbility },
-  go: { name: '囲碁', desc: '盤にある間、隣の相手の石が囲まれて逃げ場をなくしたら取る', area: 'cross' },
-  chain: { name: '連続', desc: '手札のただの石をもう1つ置ける。なければ相手の番', extraTurn: true },
-  gravity: { name: '重力', desc: 'いつでも下へ落ちる。下に続く石も一緒に押して落とす', area: 'down' },
-  antigravity: { name: '反重力', desc: 'いつでも上へ昇る。上に続く石も一緒に押して昇らせる', area: 'up' },
-  spin: { name: '回転', desc: 'まわりの8マスを、時計回りに1つずらす', onPlace: (b, x, y) => spinRing(b, x, y, 1), area: 'ring' },
-  spinBack: { name: '逆回転', desc: 'まわりの8マスを、反時計回りに1つずらす', onPlace: (b, x, y) => spinRing(b, x, y, -1), area: 'ring' },
-  cataclysm: { name: '天変地異', desc: '盤ぜんぶを、時計回りに90度回す', onPlace: (b) => cataclysmAbility(b) },
-  mystery: { name: 'はてな', desc: '置くまで何の超能力か分からない。置いた瞬間にくじで決まる' },
-  flipAround: { name: 'あべこべ', desc: 'まわり8マスの石の色を、白と黒で入れ替える', onPlace: (b, x, y) => flipColors(b, DIRS8.map(([dx, dy]) => [x + dx, y + dy])), area: 'ring' },
-  revolution: { name: '革命', desc: '盤の石の色が、全部白と黒で入れ替わる', onPlace: (b) => flipColors(b, b.flatMap((row, y) => row.map((_, x) => [x, y]))) },
-  swapHands: { name: '交換', desc: '自分と相手の手札を、そっくり入れ替える', onPlace: (b, x, y, c, st) => swapHandsAbility(st) },
-  fastForward: { name: '早送り', desc: '盤の時限爆弾と増殖を、2手ぶん進める', onPlace: (b, x, y, c, st) => fastForwardAbility(b, st), area: 'timers' },
-  warp: { name: 'ワープ', desc: 'まわり3×3の石を、盤の真ん中をはさんだ反対側へ飛ばす。飛んだ先の石は消える', onPlace: warpAbility, area: 'warp' },
-  sniper: { name: 'スナイパー', desc: '置いたあと、盤の石を1つ選んで消す。盾は狙えない', onPlace: sniperAbility, aim: true },
-  clone: { name: '分身', desc: '盤の真ん中をはさんだ反対側にも、自分の石が1つ増える', onPlace: (b, x, y, c, st) => cloneAt(b, SIZE - 1 - x, SIZE - 1 - y, c, st), area: 'mirror' },
-  cloneH: { name: '左右分身', desc: '左右に折り返した位置にも、自分の石が1つ増える', onPlace: (b, x, y, c, st) => cloneAt(b, SIZE - 1 - x, y, c, st), area: 'mirrorH' },
-  cloneV: { name: '上下分身', desc: '上下に折り返した位置にも、自分の石が1つ増える', onPlace: (b, x, y, c, st) => cloneAt(b, x, SIZE - 1 - y, c, st), area: 'mirrorV' },
-  wall: { name: '石垣', desc: '上下左右の空きマスに、誰のものでもない石を置く', onPlace: wallAbility, area: 'cross' },
-  takeover: { name: '乗っ取り', desc: '相手の石の上に置ける。下の石は消える', onEnemy: true },
-  seal: { name: '封印', desc: '相手は次の番、超能力が使えない', onPlace: sealAbility },
-  jam: { name: 'おじゃま', desc: 'まわり8マスの碁石の超能力を消して、ただの石にする', onPlace: jamAbility, area: 'ring' },
-  spy: { name: 'スパイ', desc: '相手の色で置く。この石を含む列が揃ったら、こっちの勝ち。相手があと1つで揃う場所には置けない' },
-  mine: { name: '地雷', desc: 'まわり8マスに相手が石を置いたら、その石を消す。反応した地雷はただの石になる', area: 'ring' },
-  weight: { name: '重し', desc: '押し出し・吸い込み・回転で動かされない' },
-  shield: { name: '盾', desc: 'スナイパー・核・爆弾・囲碁・地雷・乗っ取りで消されない' },
+    plain: { cost: 1, name: 'ただの石', desc: '' },
+    block: { name: '石垣', desc: '' }, // 石垣が立てる、誰のものでもない石
+    joker: { cost: 2, name: 'ジョーカー', desc: '白にも黒にもなる。相手の列にも入る' },
+    push: { cost: 2, name: '押し出し', desc: 'まわりの石を1マス外へ押す。盤から落ちた石は消える', onPlace: pushAbility, area: 'ring' },
+    suck: { cost: 3, name: '吸い込み', desc: '2マス先の石を1マス手前まで吸い寄せる', onPlace: suckAbility, area: 'ring2' },
+    nuke: { cost: 6, name: '核', desc: 'まわり5×5の石を消す。置いた石と盾は残る', onPlace: nukeAbility, area: 'sq5' },
+    timeBomb: { cost: 3, name: '時限爆弾', desc: '2手あとに爆発して、まわりの石と一緒に消える', area: 'ring' },
+    bomb: { cost: 4, name: '爆弾', desc: 'まわりの石を全部消す', onPlace: bombAbility, area: 'ring' },
+    rowBomb: { cost: 3, name: '横爆弾', desc: '左右2マスずつの石を消す', onPlace: (b, x, y) => lineBomb(b, x, y, [[1, 0]]), area: 'row' },
+    colBomb: { cost: 3, name: '縦爆弾', desc: '上下2マスずつの石を消す', onPlace: (b, x, y) => lineBomb(b, x, y, [[0, 1]]), area: 'col' },
+    diagBomb: { cost: 4, name: 'ななめ爆弾', desc: 'ななめ4方向に2マスずつの石を消す', onPlace: (b, x, y) => lineBomb(b, x, y, [[1, 1], [1, -1]]), area: 'diag' },
+    flag: { cost: 3, name: '旗', desc: '上下左右の4マスが全部自分の石になったら勝ち', area: 'cross' },
+    grow: { cost: 4, name: '増殖', desc: '盤にある間、自分の番が2回来るたびに、隣の空きマスに石が1つ増える', area: 'cross' },
+    othello: { cost: 5, name: 'オセロ', desc: '相手の石をちょうど1個はさんだら、その石を自分の色にする', onPlace: othelloAbility },
+    go: { cost: 2, name: '囲碁', desc: '盤にある間、隣の相手の石が囲まれて逃げ場をなくしたら取る', area: 'cross' },
+    chain: { cost: 5, name: '連続', desc: '手札のただの石をもう1つ置ける。なければ相手の番', extraTurn: true },
+    gravity: { cost: 2, name: '重力', desc: 'いつでも下へ落ちる。下に続く石も一緒に押して落とす', area: 'down' },
+    antigravity: { cost: 2, name: '反重力', desc: 'いつでも上へ昇る。上に続く石も一緒に押して昇らせる', area: 'up' },
+    spin: { cost: 3, name: '回転', desc: 'まわりの8マスを、時計回りに1つずらす', onPlace: (b, x, y) => spinRing(b, x, y, 1), area: 'ring' },
+    spinBack: { cost: 3, name: '逆回転', desc: 'まわりの8マスを、反時計回りに1つずらす', onPlace: (b, x, y) => spinRing(b, x, y, -1), area: 'ring' },
+    cataclysm: { cost: 5, name: '天変地異', desc: '盤ぜんぶを、時計回りに90度回す', onPlace: (b) => cataclysmAbility(b) },
+    mystery: { cost: 2, name: 'はてな', desc: '置くまで何の超能力か分からない。置いた瞬間にくじで決まる' },
+    flipAround: { cost: 5, name: 'あべこべ', desc: 'まわり8マスの石の色を、白と黒で入れ替える', onPlace: (b, x, y) => flipColors(b, DIRS8.map(([dx, dy]) => [x + dx, y + dy])), area: 'ring' },
+    revolution: { cost: 8, name: '革命', desc: '盤の石の色が、全部白と黒で入れ替わる', onPlace: (b) => flipColors(b, b.flatMap((row, y) => row.map((_, x) => [x, y]))) },
+    swapHands: { cost: 3, name: '交換', desc: '自分と相手の手札を、そっくり入れ替える', onPlace: (b, x, y, c, st) => swapHandsAbility(st) },
+    fastForward: { cost: 2, name: '早送り', desc: '盤の時限爆弾と増殖を、2手ぶん進める', onPlace: (b, x, y, c, st) => fastForwardAbility(b, st), area: 'timers' },
+    warp: { cost: 3, name: 'ワープ', desc: 'まわり3×3の石を、盤の真ん中をはさんだ反対側へ飛ばす。飛んだ先の石は消える', onPlace: warpAbility, area: 'warp' },
+    sniper: { cost: 5, name: 'スナイパー', desc: '置いたあと、盤の石を1つ選んで消す。盾は狙えない', onPlace: sniperAbility, aim: true },
+    clone: { cost: 3, name: '分身', desc: '盤の真ん中をはさんだ反対側にも、自分の石が1つ増える', onPlace: (b, x, y, c, st) => cloneAt(b, SIZE - 1 - x, SIZE - 1 - y, c, st), area: 'mirror' },
+    cloneH: { cost: 3, name: '左右分身', desc: '左右に折り返した位置にも、自分の石が1つ増える', onPlace: (b, x, y, c, st) => cloneAt(b, SIZE - 1 - x, y, c, st), area: 'mirrorH' },
+    cloneV: { cost: 3, name: '上下分身', desc: '上下に折り返した位置にも、自分の石が1つ増える', onPlace: (b, x, y, c, st) => cloneAt(b, x, SIZE - 1 - y, c, st), area: 'mirrorV' },
+    wall: { cost: 2, name: '石垣', desc: '上下左右の空きマスに、誰のものでもない石を置く', onPlace: wallAbility, area: 'cross' },
+    takeover: { cost: 4, name: '乗っ取り', desc: '相手の石の上に置ける。下の石は消える', onEnemy: true },
+    seal: { cost: 3, name: '封印', desc: '相手は次の番、超能力が使えない', onPlace: sealAbility },
+    jam: { cost: 2, name: 'おじゃま', desc: 'まわり8マスの碁石の超能力を消して、ただの石にする', onPlace: jamAbility, area: 'ring' },
+    spy: { cost: 3, name: 'スパイ', desc: '相手の色で置く。この石を含む列が揃ったら、こっちの勝ち。相手があと1つで揃う場所には置けない' },
+    mine: { cost: 2, name: '地雷', desc: 'まわり8マスに相手が石を置いたら、その石を消す。反応した地雷はただの石になる', area: 'ring' },
+    weight: { cost: 2, name: '重し', desc: '押し出し・吸い込み・回転で動かされない' },
+    shield: { cost: 2, name: '盾', desc: 'スナイパー・核・爆弾・囲碁・地雷・乗っ取りで消されない' },
 };
 const HIDDEN_IDS = ['plain', 'block'];
 const SPECIAL_IDS = Object.keys(ABILITIES).filter((id) => !HIDDEN_IDS.includes(id));
@@ -585,7 +585,7 @@ const {
   RULES_VERSION, DECK_POINTS, MAX_COPIES, COST, STARTERS, CATALOG,
   costOf, deckPoints, deckCount, deckList, deckError, deckAddError, deckVersionNote,
   encodeDeckCode, decodeDeckCode, sanitizeDeck,
-} = (typeof module !== 'undefined' ? require('./deck.js') : createDeckRules)(SPECIAL_IDS);
+} = (typeof module !== 'undefined' ? require('./deck.js') : createDeckRules)(ABILITIES, SPECIAL_IDS);
 
 function makePlayer(color, deck) {
   const list = Array.isArray(deck) ? deck.map((c) => (typeof c === 'string' ? makeCard(c) : c)) : deckList(deck).map(makeCard);
