@@ -91,7 +91,7 @@ const ABILITIES = {
     colBomb: { cost: 3, name: '縦爆弾', desc: '上下2マスずつの石を消す', onPlace: (b, x, y) => lineBomb(b, x, y, [[0, 1]]), area: 'col' },
     diagBomb: { cost: 4, name: 'ななめ爆弾', desc: 'ななめ4方向に2マスずつの石を消す', onPlace: (b, x, y) => lineBomb(b, x, y, [[1, 1], [1, -1]]), area: 'diag' },
     flag: { cost: 3, name: '旗', desc: '上下左右の4マスが全部自分の石になったら勝ち', area: 'cross' },
-    grow: { cost: 4, name: '増殖', desc: '盤にある間、自分の番が2回来るたびに、隣の空きマスに石が1つ増える', area: 'cross' },
+    grow: { cost: 4, name: '増殖', desc: '盤にある間、自分の番が2回来るたびに、上下左右の空きマスをランダムに1つ選んで石が増える', area: 'cross' },
     othello: { cost: 5, name: 'オセロ', desc: '相手の石をちょうど1個はさんだら、その石を自分の色にする', onPlace: othelloAbility },
     go: { cost: 2, name: '囲碁', desc: '盤にある間、隣の相手の石が囲まれて逃げ場をなくしたら取る', area: 'cross' },
     chain: { cost: 5, name: '連続', desc: '手札のただの石をもう1つ置ける。なければ相手の番', extraTurn: true },
@@ -475,30 +475,29 @@ function findUid(board, uid) {
   return null;
 }
 
-// 増殖：手番の人の増殖の石は、その人の番が来るたびに1つ年をとり、2回に1回、隣の空きマスに石を増やす。
-// 増やす向きは、上 → 右 → 下 → 左 の順に回していく
+// 増殖：手番の人の増殖の石は、自分の番が2回来るたびに上下左右の空きマスを1つ選ぶ。
 function growth(board, color, st) {
-  const fx = [];
-  const seeds = [];
-  for (let y = 0; y < SIZE; y++) for (let x = 0; x < SIZE; x++) {
-    const p = board[y][x];
-    if (p && p.ability === 'grow' && p.color === color) seeds.push([x, y, p]);
-  }
-  for (const [x, y, p] of seeds) {
-    p.age = (p.age || 0) + 1;
-    if (p.age % 2 !== 0) continue;
-    const start = (p.age / 2) % 4;
-    for (let k = 0; k < 4; k++) {
-      const [dx, dy] = DIRS4[(start + k) % 4];
-      const nx = x + dx, ny = y + dy;
-      if (inside(nx, ny) && !board[ny][nx]) {
+    const fx = [];
+    const seeds = [];
+    for (let y = 0; y < SIZE; y++) for (let x = 0; x < SIZE; x++) {
+        const p = board[y][x];
+        if (p && p.ability === 'grow' && p.color === color) seeds.push([x, y, p]);
+    }
+    for (const [x, y, p] of seeds) {
+        p.age = (p.age || 0) + 1;
+        if (p.age % 2 !== 0) continue;
+        const empty = DIRS4
+            .map(([dx, dy]) => [x + dx, y + dy])
+            .filter(([nx, ny]) => inside(nx, ny) && !board[ny][nx]);
+        if (!empty.length) continue;
+        // 手数と座標から抽選を再現し、試し読みや演出で対局の乱数列を進めない。
+        const event = ((st?.moveCount ?? 0) * SIZE + y) * SIZE + x;
+        const random = growthSeed === null ? Math.random() : mulberry32(growthSeed + event)();
+        const [nx, ny] = empty[Math.floor(random * empty.length)];
         board[ny][nx] = newPiece(color, 'plain', st);
         fx.push({ kind: 'placed', x: nx, y: ny, by: 'grow', fromX: x, fromY: y });
-        break;
-      }
     }
-  }
-  return fx;
+    return fx;
 }
 
 // ===== 勝ち判定 =====
@@ -569,7 +568,12 @@ function mulberry32(a) {
   };
 }
 let rng = Math.random;
-function setSeed(seed) { rng = mulberry32(seed); nextId = 1; }
+let growthSeed = null;
+function setSeed(seed) {
+    rng = mulberry32(seed);
+    growthSeed = seed;
+    nextId = 1;
+}
 const newSeed = () => Math.floor(Math.random() * 2 ** 31);
 
 function shuffle(arr) {
